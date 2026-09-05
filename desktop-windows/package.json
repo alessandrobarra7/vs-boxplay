@@ -1,0 +1,16 @@
+{
+  "name": "boxplay-windows",
+  "version": "0.1.0",
+  "description": "BOXPLAY desktop para Windows.",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node scripts/test-state.js",
+    "check": "node --check src/state.js && node --check src/main.js && node --check src/preload.js && node --check src/renderer.js && node --check scripts/test-state.js",
+    "dist": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-installer.ps1"
+  },
+  "devDependencies": {
+    "electron": "^44.2.0"
+  }
+}

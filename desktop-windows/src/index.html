@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self'; style-src 'self'; media-src 'self' file:; img-src 'self' data:;" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BOXPLAY</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-mark" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <h1>BOXPLAY</h1>
+        <div class="header-actions">
+          <button id="storage-button" class="toolbar-button" type="button" title="Abrir pasta local" aria-label="Abrir pasta local">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"></path></svg>
+          </button>
+          <button id="stop-all-button" class="toolbar-button stop" type="button" title="Parar todos" aria-label="Parar todos">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="filled" x="7" y="7" width="10" height="10" rx="2"></rect></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="board-scroll" aria-label="Boxes de audio">
+        <section id="box-grid" class="box-grid"></section>
+      </main>
+
+      <footer class="statusbar">
+        <span>20 boxes prontos</span>
+        <span id="storage-path"></span>
+      </footer>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="renderer.js"></script>
+  </body>
+</html>
