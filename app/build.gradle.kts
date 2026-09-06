@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseSigningVariables = mapOf(
+    "RELEASE_STORE_FILE" to System.getenv("RELEASE_STORE_FILE"),
+    "RELEASE_STORE_PASSWORD" to System.getenv("RELEASE_STORE_PASSWORD"),
+    "RELEASE_KEY_ALIAS" to System.getenv("RELEASE_KEY_ALIAS"),
+    "RELEASE_KEY_PASSWORD" to System.getenv("RELEASE_KEY_PASSWORD"),
+)
+val hasReleaseSigningConfig = releaseSigningVariables.values.all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.boxplay"
     compileSdk = 37
@@ -24,6 +32,61 @@ android {
 
     buildFeatures {
         compose = true
+    }
+
+    // The keystore itself is NEVER read from this repo — see
+    // docs/BOXPLAY_PLANO_COMPRA_UNICA_PLAYSTORE_V1.txt section 4 ("SEGURANCA").
+    // These four values only exist as environment variables at build time
+    // (exported locally before `./gradlew bundleRelease`, or injected as
+    // GitHub Actions secrets by .github/workflows/build-release-aab.yml).
+    // Debug builds do not need these values; release artifacts for real
+    // testing/publishing must provide all four.
+    val releaseStoreFile = releaseSigningVariables.getValue("RELEASE_STORE_FILE")
+    val releaseStorePassword = releaseSigningVariables.getValue("RELEASE_STORE_PASSWORD")
+    val releaseKeyAlias = releaseSigningVariables.getValue("RELEASE_KEY_ALIAS")
+    val releaseKeyPassword = releaseSigningVariables.getValue("RELEASE_KEY_PASSWORD")
+
+    if (hasReleaseSigningConfig) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            if (hasReleaseSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+}
+
+tasks.register("validateReleaseSigning") {
+    group = "verification"
+    description = "Fails when release signing environment variables are missing."
+
+    doLast {
+        if (!hasReleaseSigningConfig) {
+            val missing = releaseSigningVariables
+                .filterValues { it.isNullOrBlank() }
+                .keys
+                .joinToString(", ")
+            throw org.gradle.api.GradleException(
+                "Release signing is incomplete. Configure these environment variables: $missing",
+            )
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == "preReleaseBuild" || name == "assembleRelease" || name == "bundleRelease") {
+        dependsOn("validateReleaseSigning")
     }
 }
 
@@ -55,7 +118,3 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
-
-
-
-

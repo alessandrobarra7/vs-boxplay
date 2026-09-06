@@ -1,5 +1,8 @@
 package com.boxplay.ui.screens
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -31,16 +34,21 @@ import androidx.compose.material.icons.rounded.StopCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -59,6 +67,9 @@ import com.boxplay.viewmodel.BoxPlayViewModel
 @Composable
 fun BoxPlayScreen(viewModel: BoxPlayViewModel = viewModel()) {
     val boxes by viewModel.boxes.collectAsStateWithLifecycle()
+    val unlockPriceText by viewModel.unlockPriceText.collectAsStateWithLifecycle()
+    val billingError by viewModel.billingError.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var pickingBoxId by rememberSaveable { mutableStateOf<Int?>(null) }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val boxId = pickingBoxId
@@ -68,62 +79,98 @@ fun BoxPlayScreen(viewModel: BoxPlayViewModel = viewModel()) {
         }
     }
 
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BoxPlayBackground)
-            .statusBarsPadding()
-            .navigationBarsPadding(),
-    ) {
-        val gridColumns = if (maxWidth < 320.dp) 1 else 2
-        val gridState = rememberLazyGridState()
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            BoxPlayHeaderBar(onStopAll = viewModel::onStopAllClicked)
-
-            Box(
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(gridColumns),
-                    state = gridState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(end = 7.dp, bottom = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(boxes, key = { it.id }) { boxState ->
-                        AudioBoxCard(
-                            state = boxState,
-                            onPickAudio = {
-                                pickingBoxId = boxState.id
-                                audioPicker.launch(arrayOf("audio/*"))
-                            },
-                            onSave = { viewModel.onSaveClicked(boxState.id) },
-                            onToggleLock = { viewModel.onLockClicked(boxState.id) },
-                            onTogglePlay = { viewModel.onPlayPauseClicked(boxState.id) },
-                            onRestart = { viewModel.onRestartClicked(boxState.id) },
-                            onVolumeChange = { volume -> viewModel.onVolumeChanged(boxState.id, volume) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-
-                GridScrollIndicator(
-                    state = gridState,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 1.dp),
-                )
-            }
+    // FIX: billingError used to be exposed by the ViewModel but never collected
+    // here, so a failed purchase (no product configured, Play Store
+    // unavailable, network error, etc.) left the user staring at a screen that
+    // looked unresponsive with no feedback at all. Surface it as a one-off
+    // snackbar and clear it once shown so it doesn't reappear on
+    // recomposition/rotation.
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(billingError) {
+        val message = billingError
+        if (message != null) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.onBillingErrorShown()
         }
     }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BoxPlayBackground)
+                .statusBarsPadding()
+                .navigationBarsPadding(),
+        ) {
+            val gridColumns = if (maxWidth < 320.dp) 1 else 2
+            val gridState = rememberLazyGridState()
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                BoxPlayHeaderBar(onStopAll = viewModel::onStopAllClicked)
+
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(gridColumns),
+                        state = gridState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(end = 7.dp, bottom = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(boxes, key = { it.id }) { boxState ->
+                            AudioBoxCard(
+                                state = boxState,
+                                onPickAudio = {
+                                    pickingBoxId = boxState.id
+                                    audioPicker.launch(arrayOf("audio/*"))
+                                },
+                                onSave = { viewModel.onSaveClicked(boxState.id) },
+                                onToggleLock = { viewModel.onLockClicked(boxState.id) },
+                                onTogglePlay = { viewModel.onPlayPauseClicked(boxState.id) },
+                                onRestart = { viewModel.onRestartClicked(boxState.id) },
+                                onVolumeChange = { volume -> viewModel.onVolumeChanged(boxState.id, volume) },
+                                modifier = Modifier.fillMaxWidth(),
+                                onUnlockClicked = {
+                                    val activity = context.findActivity()
+                                    if (activity != null) viewModel.onUnlockClicked(activity)
+                                },
+                                unlockPriceText = unlockPriceText,
+                            )
+                        }
+                    }
+
+                    GridScrollIndicator(
+                        state = gridState,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 1.dp),
+                    )
+                }
+            }
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp),
+        )
+    }
 }
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
 
 @Composable
 private fun GridScrollIndicator(

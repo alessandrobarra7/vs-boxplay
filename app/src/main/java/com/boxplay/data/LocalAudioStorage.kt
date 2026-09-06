@@ -68,19 +68,30 @@ class LocalAudioStorage(private val context: Context) {
     }
 
     private fun queryDisplayName(uri: Uri): String? {
-        val cursor: Cursor = context.contentResolver.query(
-            uri,
-            arrayOf(OpenableColumns.DISPLAY_NAME),
-            null,
-            null,
-            null,
-        ) ?: return null
+        // FIX: some content providers throw instead of returning null or an
+        // empty cursor (SecurityException when the grant was revoked,
+        // IllegalArgumentException for an unsupported/malformed uri, etc.).
+        // This used to crash the app synchronously as soon as the user picked
+        // such a file. Any failure here now just falls back to no queried
+        // name, same as if the cursor had come back empty — readDisplayName()
+        // already has a fallback chain for that case.
+        return try {
+            val cursor: Cursor = context.contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            ) ?: return null
 
-        cursor.use {
-            if (!it.moveToFirst()) return null
-            val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (nameIndex < 0) return null
-            return it.getString(nameIndex)?.takeIf { name -> name.isNotBlank() }
+            cursor.use {
+                if (!it.moveToFirst()) return null
+                val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex < 0) return null
+                it.getString(nameIndex)?.takeIf { name -> name.isNotBlank() }
+            }
+        } catch (error: Exception) {
+            null
         }
     }
 

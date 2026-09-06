@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,7 +24,10 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.rounded.Save
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -69,6 +73,8 @@ fun AudioBoxCard(
     onRestart: () -> Unit,
     onVolumeChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    onUnlockClicked: () -> Unit = {},
+    unlockPriceText: String? = null,
 ) {
     val isPlaying = state.playbackState == AudioPlaybackState.Playing
 
@@ -79,6 +85,15 @@ fun AudioBoxCard(
         border = BorderStroke(1.dp, BoxPlayCardBorder),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
+        // FIX: a box locked by the one-time-purchase paywall shows a dedicated
+        // upsell face instead of the normal controls (which would render as
+        // disabled and confusing — the user wouldn't know WHY they're greyed
+        // out). See docs/BOXPLAY_PLANO_COMPRA_UNICA_PLAYSTORE_V1.txt.
+        if (state.isLockedByPaywall) {
+            PaywallCardContent(boxId = state.id, priceText = unlockPriceText, onUnlockClicked = onUnlockClicked)
+            return@Card
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -174,6 +189,64 @@ fun AudioBoxCard(
                 volume = state.volume,
                 enabled = state.canChangeVolume,
                 onVolumeChange = onVolumeChange,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PaywallCardContent(
+    boxId: Int,
+    priceText: String?,
+    onUnlockClicked: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp)
+            .height(148.dp - 24.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column {
+            Icon(
+                imageVector = Icons.Rounded.Lock,
+                contentDescription = null,
+                tint = BoxPlaySecondaryText,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = "Box $boxId",
+                color = BoxPlayPrimaryText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "Disponível na versão completa",
+                color = BoxPlaySecondaryText,
+                fontSize = 11.sp,
+                lineHeight = 13.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Button(
+            onClick = onUnlockClicked,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        ) {
+            Icon(imageVector = Icons.Rounded.Star, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = if (priceText != null) "Desbloquear tudo · $priceText" else "Desbloquear tudo",
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
         }
     }

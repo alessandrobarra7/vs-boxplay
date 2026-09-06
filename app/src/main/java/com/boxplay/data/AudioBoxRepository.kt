@@ -1,8 +1,10 @@
 package com.boxplay.data
 
 import android.content.Context
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -10,7 +12,15 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-private val Context.audioBoxDataStore by preferencesDataStore(name = "boxplay_audio_boxes")
+// FIX: without a corruptionHandler, a single corrupted write to this file
+// (killed mid-write, disk full, storage corruption) makes DataStore throw
+// every time the app reads it afterwards, permanently crashing BoxPlay on
+// launch until the user clears app data. Falling back to empty preferences
+// loses only that one corrupted snapshot instead of bricking the app.
+private val Context.audioBoxDataStore by preferencesDataStore(
+    name = "boxplay_audio_boxes",
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 class AudioBoxRepository(private val context: Context) {
     val configs: Flow<List<AudioBoxConfig>> = context.audioBoxDataStore.data.map { preferences ->
