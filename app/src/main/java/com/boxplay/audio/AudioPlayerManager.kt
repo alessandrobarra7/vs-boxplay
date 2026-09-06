@@ -34,6 +34,7 @@ class AudioPlayerManager(
             holder.player.seekTo(0)
         }
 
+        pauseOtherPlayers(boxId)
         holder.player.play()
         onUpdate(AudioPlayerUpdate(boxId, PlayerRuntimeState.Playing))
     }
@@ -51,6 +52,7 @@ class AudioPlayerManager(
         holder.player.seekTo(0)
 
         if (wasPlaying) {
+            pauseOtherPlayers(boxId)
             holder.player.play()
             onUpdate(AudioPlayerUpdate(boxId, PlayerRuntimeState.Playing))
         } else {
@@ -127,6 +129,15 @@ class AudioPlayerManager(
         })
 
         holder
+    }
+
+    private fun pauseOtherPlayers(activeBoxId: Int) {
+        holders.forEach { (boxId, holder) ->
+            if (boxId != activeBoxId && holder.player.isPlaying) {
+                holder.player.pause()
+                onUpdate(AudioPlayerUpdate(boxId, PlayerRuntimeState.Paused))
+            }
+        }
     }
 
     private data class PlayerHolder(

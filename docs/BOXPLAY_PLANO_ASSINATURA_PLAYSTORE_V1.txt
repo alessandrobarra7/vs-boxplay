@@ -1,0 +1,61 @@
+BOXPLAY - PLANO DE ASSINATURA PLAY STORE - VERSAO 1
+
+Este arquivo consolida as decisoes confirmadas apos a auditoria do plano inicial.
+Ele substitui trechos conflitantes do documento externo BOXPLAY_PLANO_ASSINATURA_PLAYSTORE_PARA_CODEX.txt como referencia interna do projeto.
+
+1. Decisoes confirmadas
+
+- Regra de audio: apenas uma trilha pode tocar por vez.
+- Ao iniciar uma nova trilha, qualquer outra trilha em reproducao deve ser pausada automaticamente.
+- Identificador definitivo do aplicativo Android: com.boxplay.
+- O app Android continua sendo o foco da publicacao na Google Play nesta etapa.
+- A versao Windows/Electron fica fora da etapa de assinatura Google Play.
+
+2. Estado atual usado como base
+
+- applicationId: com.boxplay
+- namespace: com.boxplay
+- versionCode: 3
+- versionName: 0.2.1
+- minSdk: 26
+- targetSdk: 36
+- compileSdk: 37
+- interface: Jetpack Compose
+- audio: Media3/ExoPlayer
+- persistencia local: DataStore
+- quantidade de boxes: 20
+
+3. Correcoes aplicadas ao plano inicial
+
+- Remover qualquer orientacao de preservar audio simultaneo.
+- Remover o criterio de teste que exige dois ou mais audios tocando ao mesmo tempo.
+- Atualizar referencias antigas de versionCode 2 e versionName 0.2.0 para versionCode 3 e versionName 0.2.1.
+- Manter com.boxplay como identificador definitivo, sem migrar para com.studiobarra7.boxplay.
+- Usar pacotes Kotlin sob com.boxplay ao planejar novas camadas Android.
+
+4. Protecao de segredos no repositorio
+
+O .gitignore deve proteger keystores, propriedades locais de assinatura, arquivos .env e credenciais JSON.
+Nenhuma senha, chave, token, keystore ou service account deve entrar no Git.
+
+5. Proxima fase recomendada
+
+Antes de implementar Billing, criar um branch de trabalho e validar o build atual.
+A Fase 1 deve ser pequena e preparar apenas a estrutura segura:
+
+- adicionar permissao INTERNET no AndroidManifest quando o app for integrar Billing/backend;
+- configurar build release lendo assinatura de variaveis/propriedades locais ignoradas;
+- adicionar estruturas iniciais de entitlement sem bloquear o app ainda;
+- adicionar Google Play Billing somente apos confirmar a versao oficial atual;
+- nao criar produto real na Play Console sem aprovacao;
+- nao gerar credenciais automaticamente;
+- nao fazer deploy de backend nesta fase.
+
+6. Teste obrigatorio para aceitar mudancas futuras
+
+- Gradle check deve passar.
+- Lint deve passar.
+- AssembleDebug deve passar.
+- O soundboard deve manter 20 boxes.
+- Apenas uma trilha deve tocar por vez.
+- Arquivos locais do usuario nao podem ser apagados por assinatura vencida.

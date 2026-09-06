@@ -10,3 +10,20 @@ desktop-windows/node_modules/
 desktop-windows/dist/
 desktop-windows/release/
 desktop-windows/*.log
+
+# Android release signing and local secrets
+*.jks
+*.keystore
+keystore.properties
+local.keystore.properties
+play-service-account*.json
+service-account*.json
+google-services.json
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local distribution artifacts
+distribuicao/

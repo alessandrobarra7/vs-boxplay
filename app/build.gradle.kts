@@ -5,18 +5,14 @@ plugins {
 
 android {
     namespace = "com.boxplay"
-    compileSdk {
-        version = release(37) {
-            minorApiLevel = 0
-        }
-    }
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.boxplay"
         minSdk = 26
-        targetSdk = 37
-        versionCode = 2
-        versionName = "0.2.0"
+        targetSdk = 36
+        versionCode = 3
+        versionName = "0.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -35,6 +31,7 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
     val lifecycleVersion = "2.11.0"
     val media3Version = "1.11.0"
+    val billingVersion = "9.1.0"
 
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -50,6 +47,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion")
     implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("com.android.billingclient:billing-ktx:$billingVersion")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
@@ -57,3 +55,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
+
+
+
+

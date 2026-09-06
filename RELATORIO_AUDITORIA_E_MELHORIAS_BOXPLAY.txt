@@ -1,0 +1,557 @@
+RELATORIO DE AUDITORIA TECNICA E ORIENTACOES DE MELHORIA - BOXPLAY
+Data: 05/09/2026
+Projeto: X:\GPT\boxplay
+Repositorio: https://github.com/alessandrobarra7/vs-boxplay
+
+1. OBJETIVO DO RELATORIO
+
+Este documento registra pontos que podem estar errados, incompletos ou arriscados no aplicativo BOXPLAY, alem de orientacoes tecnicas para melhorar a estrutura antes de uma publicacao online ou distribuicao publica.
+
+O projeto atual possui duas frentes principais:
+
+- Android nativo em Kotlin/Jetpack Compose.
+- Windows desktop em Electron.
+
+Este relatorio nao aplica alteracoes automaticamente no codigo. Ele serve como base para planejamento, auditoria, priorizacao e evolucao segura do produto.
+
+2. RESUMO EXECUTIVO
+
+O BOXPLAY ja possui um MVP funcional: 20 caixas de audio, upload, salvamento local, play/pause, reiniciar, volume, bloqueio por cadeado e versao Windows com instalador local.
+
+Mesmo assim, ainda existem pontos importantes antes de publicar online:
+
+- Falta uma estrategia definitiva de monetizacao e licenciamento entre Android e Windows.
+- A integracao de billing proposta em patch anterior compila, mas precisa de ajustes antes de producao.
+- A versao Android ainda usa APK debug; para publicar sera necessario gerar build release assinado.
+- A versao Windows gera instalador sem assinatura digital, o que pode causar alerta do Windows SmartScreen.
+- Ainda nao existe CI completo para Android + Windows + testes + artefatos de release.
+- A estrutura atual mistura produto Android, produto desktop e artefatos locais no mesmo repositorio, exigindo regras claras de build e release.
+- Falta cobertura de testes para as regras criticas de negocio, especialmente paywall, persistencia, falhas de arquivo e comportamento de player.
+- Falta teste de performance configurado para medir abertura do app, latencia do clique ate tocar audio, memoria e fluidez de rolagem.
+
+3. PONTOS QUE PODEM ESTAR ERRADOS OU INCOMPLETOS
+
+3.1. Publicacao Android ainda nao esta pronta para loja
+
+Situacao atual:
+
+- O app Android gera APK debug.
+- APK debug serve para teste, mas nao deve ser publicado como versao final.
+- Nao ha configuracao de assinatura release documentada no projeto.
+- Nao ha geracao de AAB, formato normalmente usado para Google Play.
+
+Impacto:
+
+- O app pode ser testado manualmente, mas nao esta pronto para publicacao formal no Google Play.
+- Sem assinatura release e versionamento adequado, futuras atualizacoes podem ficar bloqueadas.
+
+Orientacao:
+
+- Criar configuracao de release separada.
+- Gerar Android App Bundle com `:app:bundleRelease`.
+- Configurar assinatura com keystore fora do repositorio.
+- Usar variaveis de ambiente ou arquivo local ignorado pelo Git para senhas e caminhos sensiveis.
+- Nunca versionar keystore, senhas ou tokens.
+
+3.2. Billing e monetizacao ainda precisam de decisao de produto
+
+Situacao atual:
+
+- O app original libera 20 caixas.
+- O patch auditado anteriormente propunha liberar apenas o Box 1 gratis e bloquear Boxes 2 a 20 por compra unica.
+- A versao Windows continua com 20 caixas liberadas.
+
+Impacto:
+
+- O usuario pode ter experiencias diferentes em Android e Windows.
+- Se a regra comercial for venda de desbloqueio completo, ela precisa estar consistente entre plataformas.
+- Se Android for pago e Windows gratuito, isso precisa ser uma decisao explicita de produto.
+
+Orientacao:
+
+- Definir uma regra comercial oficial:
+  - Opcao A: todas as plataformas gratuitas no MVP.
+  - Opcao B: Android com compra unica e Windows gratuito.
+  - Opcao C: Android e Windows com licenca/pagamento.
+  - Opcao D: versao gratuita limitada e versao completa paga.
+- Documentar essa regra no README e no codigo.
+- Adicionar testes para garantir que a regra nao seja quebrada em futuras alteracoes.
+
+3.3. Patch de Billing usa versao que pode estar inadequada para publicacao
+
+Situacao observada:
+
+- O patch auditado adicionava `com.android.billingclient:billing-ktx:7.1.1`.
+- Em 05/09/2026, a Billing Library 7 ja passou do prazo principal de aceitacao para novos apps/updates no Google Play, salvo extensao.
+- A linha 9.x da Billing Library ja esta disponivel.
+
+Impacto:
+
+- O Google Play pode rejeitar builds novos ou exibir aviso de politica.
+- A equipe pode perder tempo integrando uma versao que precisara ser migrada logo depois.
+
+Orientacao:
+
+- Usar Billing Library 9.x, salvo motivo tecnico documentado.
+- Confirmar a versao exigida diretamente na documentacao Android antes de publicar.
+- Testar o fluxo com conta de teste no Google Play Console.
+- Nao liberar monetizacao sem produto criado e ativo no Play Console.
+
+3.4. Erros de Billing podem nao aparecer para o usuario
+
+Situacao observada no patch auditado:
+
+- O ViewModel expoe `billingError`.
+- A tela coleta `unlockPriceText`, mas nao coleta nem exibe `billingError`.
+
+Impacto:
+
+- Se a compra falhar, o produto nao existir, a Play Store estiver indisponivel ou o usuario estiver fora de ambiente compativel, a interface pode parecer travada ou sem resposta.
+
+Orientacao:
+
+- Exibir erros de billing com Snackbar/Dialog curto.
+- Limpar o erro apos exibicao usando metodo apropriado do ViewModel.
+- Registrar eventos importantes de billing em log tecnico, sem expor dados sensiveis.
+
+3.5. Ciclo de vida do BillingManager precisa ser reforcado
+
+Situacao observada no patch auditado:
+
+- O BillingManager cria um CoroutineScope proprio.
+- `destroy()` encerra a conexao com BillingClient, mas nao cancela explicitamente o escopo.
+
+Impacto:
+
+- Pode ocorrer tentativa de reconexao depois que o ViewModel foi limpo.
+- Pode haver vazamento logico ou atualizacao tardia de estado.
+
+Orientacao:
+
+- Guardar o SupervisorJob em propriedade.
+- Cancelar o job em `destroy()`.
+- Impedir reconexao se o manager ja estiver destruido.
+- Preferir injetar um scope controlado pelo ViewModel quando fizer sentido.
+
+3.6. Persistencia Android precisa ser mais resiliente
+
+Situacao atual:
+
+- O app usa DataStore para salvar configuracoes dos boxes.
+- O patch auditado propoe corruptionHandler para evitar loop de crash se o arquivo de preferencias corromper.
+
+Impacto:
+
+- Sem tratamento de corrupcao, um arquivo quebrado pode impedir o app de abrir ate limpar dados.
+
+Orientacao:
+
+- Aplicar tratamento de corrupcao no DataStore.
+- Registrar evento de recuperacao.
+- Considerar backup/exportacao futura das configuracoes dos boxes.
+
+3.7. Leitura de nome de arquivo via ContentResolver pode falhar
+
+Situacao atual:
+
+- Ao selecionar audio no Android, o app tenta consultar `OpenableColumns.DISPLAY_NAME`.
+- Alguns providers podem lancar excecao ou retornar cursor incompleto.
+
+Impacto:
+
+- Um arquivo vindo de provider incomum, nuvem ou permissao revogada pode causar erro no fluxo de upload.
+
+Orientacao:
+
+- Proteger queryDisplayName com try/catch.
+- Manter fallback para nome gerado quando o nome original nao puder ser lido.
+- Testar com arquivos locais, Google Drive, WhatsApp, gravador do celular e gerenciador de arquivos Samsung.
+
+3.8. Regras de bloqueio e paywall precisam ser testadas
+
+Situacao atual:
+
+- Existem testes basicos para estado de UI.
+- Falta cobertura para regras criticas novas, como paywall, Billing, arquivo ausente e bloqueio por cadeado.
+
+Impacto:
+
+- Futuras alteracoes podem quebrar monetizacao ou permitir acoes indevidas em boxes bloqueados.
+
+Orientacao:
+
+- Criar testes para:
+  - Box 1 gratuito.
+  - Boxes 2 a 20 bloqueados sem compra.
+  - Boxes 2 a 20 liberados apos compra.
+  - Cadeado manual nao deve ser confundido com paywall.
+  - Play/Reiniciar devem continuar bloqueados quando o box estiver atras de paywall.
+  - Erro de arquivo ausente deve aparecer corretamente.
+
+3.9. ViewModel Android concentra responsabilidades demais
+
+Situacao atual:
+
+- O ViewModel coordena DataStore, storage, player, runtime state e possivel Billing.
+
+Impacto:
+
+- A classe tende a crescer e ficar dificil de testar.
+- Mudancas de monetizacao podem afetar fluxo de audio.
+
+Orientacao:
+
+- Separar responsabilidades em casos de uso pequenos:
+  - AudioBoxConfigRepository.
+  - AudioStorageService.
+  - AudioPlaybackController.
+  - EntitlementRepository ou BillingRepository.
+  - BoxPlayReducer/StateMapper para converter dominio em UI.
+- Injetar dependencias em vez de instanciar tudo diretamente dentro do ViewModel.
+- Comecar com injecao manual simples antes de adicionar framework de DI.
+
+3.10. Player Android precisa de testes manuais fortes
+
+Situacao atual:
+
+- O app usa Media3/ExoPlayer por box.
+- Multiplos audios podem tocar em paralelo.
+
+Impacto:
+
+- Muitos players simultaneos podem consumir memoria/CPU.
+- Alguns aparelhos podem ter limitacoes quando varios audios tocam ao mesmo tempo.
+
+Orientacao:
+
+- Definir comportamento desejado:
+  - Permitir varios audios simultaneos.
+  - Ou tocar apenas um por vez.
+- Se permitir varios, medir memoria e estabilidade com 5, 10 e 20 audios carregados.
+- Adicionar botao claro de parar todos, ja existente, e manter comportamento previsivel.
+- Considerar pool ou liberacao de players inativos se houver problema de memoria.
+
+3.11. Versao Windows nao possui assinatura digital
+
+Situacao atual:
+
+- O instalador Windows foi gerado localmente.
+- O executavel nao esta assinado.
+
+Impacto:
+
+- Windows SmartScreen pode alertar que o app nao e reconhecido.
+- Usuarios finais podem desconfiar ou nao conseguir instalar em ambientes corporativos.
+
+Orientacao:
+
+- Obter certificado de assinatura de codigo se a distribuicao publica Windows for prioridade.
+- Assinar executavel e instalador.
+- Publicar hash SHA256 junto do download.
+- Distribuir instalador por GitHub Releases ou site oficial.
+
+3.12. Instalador Windows atual e funcional, mas simples
+
+Situacao atual:
+
+- O instalador usa empacotamento local via script PowerShell/IExpress.
+- Instala em `%LOCALAPPDATA%\Programs\BOXPLAY`.
+
+Impacto:
+
+- E util para MVP, mas nao e ideal como instalador profissional de longo prazo.
+
+Orientacao:
+
+- Migrar para NSIS, WiX ou Electron Builder quando o ambiente estiver estabilizado.
+- Criar desinstalador formal.
+- Versionar releases.
+- Considerar atualizacao automatica apenas depois de estabilizar assinatura e canal de release.
+
+3.13. CI/CD ainda e insuficiente para publicacao online
+
+Situacao atual:
+
+- O repositorio foi enviado ao GitHub.
+- Um patch externo propoe workflow para gerar APK debug.
+- Ainda nao ha pipeline completo validando Android e desktop.
+
+Impacto:
+
+- Erros podem chegar ao repositorio sem build automatizado completo.
+- Artefatos de release dependem da maquina local.
+
+Orientacao:
+
+- Criar GitHub Actions separados:
+  - Android: test, lint, assembleDebug, bundleRelease quando houver assinatura segura.
+  - Windows: npm ci, npm test, npm run check, npm audit, build do instalador.
+- Publicar artefatos de debug apenas para auditoria interna.
+- Publicar releases oficiais apenas por tags versionadas.
+
+3.14. Versionamento precisa ser formalizado
+
+Situacao atual:
+
+- Android tem versionCode/versionName.
+- Windows tem version no package.json.
+- Nao ha regra clara unificada de release.
+
+Impacto:
+
+- Pode haver confusao entre APK, instalador Windows e codigo-fonte.
+
+Orientacao:
+
+- Usar semver para produto: 0.1.0, 0.2.0, 1.0.0.
+- Sincronizar:
+  - Android versionName.
+  - Android versionCode.
+  - desktop-windows/package.json version.
+  - nome dos instaladores.
+  - tags Git: `v0.2.0`, `v0.3.0` etc.
+
+3.15. Estrutura do repositorio pode melhorar
+
+Situacao atual:
+
+- Android esta em `app/`.
+- Desktop esta em `desktop-windows/`.
+- A raiz contem Gradle e README geral.
+
+Essa estrutura e aceitavel para MVP, mas pode ficar confusa conforme crescer.
+
+Orientacao de estrutura sugerida:
+
+X:\GPT\boxplay
+  app\                    Android nativo
+  desktop-windows\        Aplicacao Windows Electron
+  docs\                   Relatorios, auditorias, orientacoes de publicacao
+  scripts\                Scripts gerais do repositorio, se houver
+  .github\workflows\      CI/CD
+  README.md               Visao geral do produto
+
+Recomendacao:
+
+- Criar pasta `docs/` para documentos como este relatorio.
+- Manter artefatos gerados fora do Git.
+- Usar GitHub Releases para APKs, AABs e instaladores.
+
+3.16. README precisa separar usuario final, desenvolvedor e auditor
+
+Situacao atual:
+
+- README descreve Android e Windows.
+- Ainda pode melhorar para publicacao online.
+
+Orientacao:
+
+- Separar secoes:
+  - O que e o BOXPLAY.
+  - Como executar Android.
+  - Como executar Windows.
+  - Como gerar APK debug.
+  - Como gerar instalador Windows.
+  - Como publicar release.
+  - O que nao deve ser versionado.
+  - Status do projeto.
+
+3.17. Acessibilidade e usabilidade precisam de revisao
+
+Situacao atual:
+
+- A UI Android e compacta para mostrar varios boxes.
+- A versao Windows tambem usa layout compacto.
+
+Impacto:
+
+- Em telas pequenas, texto pode ficar apertado.
+- Usuarios podem nao entender diferenca entre cadeado, paywall, salvar e enviar.
+
+Orientacao:
+
+- Revisar contentDescription dos botoes.
+- Diferenciar visualmente:
+  - Box vazio.
+  - Audio selecionado mas nao salvo.
+  - Audio salvo.
+  - Box tocando.
+  - Box pausado.
+  - Box bloqueado por cadeado.
+  - Box bloqueado por pagamento.
+- Adicionar mensagens de erro claras.
+- Testar em telas pequenas, celulares Samsung e monitores Windows comuns.
+
+3.18. Fluxo de upload/salvamento pode confundir usuario
+
+Situacao atual:
+
+- O usuario seleciona audio e depois precisa salvar.
+
+Impacto:
+
+- Alguns usuarios podem clicar em Play antes de salvar e achar que o app nao funciona.
+
+Orientacao:
+
+- Exibir status claro: `Selecionado - toque em Salvar`.
+- Considerar autosave apos selecionar audio, se isso simplificar o fluxo.
+- Se manter salvamento manual, desabilitar Play com tooltip/status claro ate salvar.
+
+3.19. Desktop Windows e Android nao compartilham codigo de dominio
+
+Situacao atual:
+
+- Android usa Kotlin.
+- Windows usa JavaScript/Electron.
+
+Impacto:
+
+- Regras duplicadas podem divergir com o tempo.
+
+Orientacao:
+
+- Documentar regras de dominio em `docs/regras-do-produto.md`.
+- Criar testes equivalentes nas duas plataformas.
+- Manter nomes de conceitos iguais: Box, volume, savedAudio, locked, paywall, playbackState.
+
+3.20. Falta plano de dados e backup
+
+Situacao atual:
+
+- Android salva arquivos internamente no app.
+- Windows salva na pasta privada do aplicativo.
+
+Impacto:
+
+- Ao desinstalar, usuario pode perder audios salvos.
+- Migrar entre dispositivos ainda nao e possivel.
+
+Orientacao:
+
+- Definir politica de dados:
+  - Os audios sao copia interna ou referencia ao arquivo original?
+  - O app deve exportar/importar configuracao?
+  - O backup deve incluir os audios?
+- Futuramente criar recurso de exportar pacote BOXPLAY com configuracoes e audios.
+
+4. MELHORIAS PRIORITARIAS RECOMENDADAS
+
+Prioridade Alta:
+
+1. Decidir regra de monetizacao oficial.
+2. Se houver billing, migrar para Billing Library atual suportada e testar em Play Console.
+3. Exibir erros de billing na UI.
+4. Criar build Android release/AAB assinado com secrets fora do Git.
+5. Criar CI minimo no GitHub Actions para Android e Windows.
+6. Adicionar testes de paywall, estado de box e falhas de arquivo.
+7. Garantir que artefatos grandes continuem ignorados pelo Git.
+
+Prioridade Media:
+
+1. Separar responsabilidades do ViewModel.
+2. Criar camada de dominio para regras de box.
+3. Melhorar documentacao de release.
+4. Criar pasta `docs/`.
+5. Melhorar tratamento de corrupcao do DataStore.
+6. Melhorar mensagens de erro de upload/salvamento.
+7. Formalizar versionamento entre Android e Windows.
+
+Prioridade Baixa:
+
+1. Assinar instalador Windows.
+2. Criar desinstalador mais profissional.
+3. Adicionar atualizacao automatica no Windows.
+4. Criar exportacao/importacao de perfis de audio.
+5. Melhorar telemetria local ou logs de diagnostico, sem coletar dados sensiveis.
+
+5. TESTES QUE DEVEM SER CRIADOS
+
+Android - unitarios:
+
+- AudioBoxConfig deve criar exatamente 20 boxes.
+- Volume deve ser limitado entre 0.0 e 1.0.
+- Box bloqueado por cadeado nao permite editar.
+- Box bloqueado por paywall nao permite upload, salvar, play, reiniciar ou volume.
+- Box 1 deve permanecer gratuito.
+- Boxes 2-20 devem depender de entitlement quando monetizacao estiver ativa.
+
+Android - instrumentados/manuais:
+
+- Selecionar MP3 local.
+- Selecionar audio vindo de Google Drive/WhatsApp/gravador.
+- Salvar audio e reabrir app.
+- Tocar varios audios ao mesmo tempo.
+- Reiniciar audio em execucao.
+- Alterar volume durante reproducao.
+- Bloquear box salvo e verificar comportamento.
+- Testar aparelho real Samsung Android 16/One UI 8.5 informado pelo usuario.
+
+Windows:
+
+- npm test.
+- npm run check.
+- npm audit.
+- Abrir app empacotado.
+- Selecionar MP3/WAV.
+- Salvar, tocar, pausar, reiniciar e alterar volume.
+- Fechar/reabrir e verificar persistencia.
+- Instalar em maquina limpa ou usuario Windows diferente.
+
+Performance:
+
+- Tempo de abertura do app Android.
+- Tempo de abertura do app Windows.
+- Latencia entre clique e inicio do audio.
+- Memoria com 1, 5, 10 e 20 audios salvos.
+- Fluidez da rolagem com 20 boxes.
+- Tamanho final do APK/AAB.
+- Tamanho final do instalador Windows.
+
+6. PUBLICACAO ONLINE RECOMENDADA
+
+Para publicar de forma organizada:
+
+1. Manter codigo-fonte no GitHub.
+2. Usar GitHub Actions para validar cada push.
+3. Criar tags para versoes.
+4. Publicar artefatos em GitHub Releases:
+   - APK debug apenas para teste interno.
+   - AAB release para Play Console.
+   - Instalador Windows para usuarios desktop.
+5. Nunca publicar segredos no repositorio.
+6. Documentar hash SHA256 dos instaladores.
+7. Manter changelog por versao.
+
+7. CUIDADOS COM SEGURANCA
+
+- Nao versionar keystore Android.
+- Nao versionar senha de assinatura.
+- Nao versionar token GitHub.
+- Nao versionar credenciais de Play Console.
+- Nao imprimir tokens em logs.
+- Nao armazenar informacoes de pagamento localmente.
+- Para compras, considerar Google Play como fonte de verdade ou implementar backend proprio com validacao server-side em uma fase posterior.
+
+8. CONCLUSAO
+
+O BOXPLAY esta em uma boa fase de MVP: ja existe app Android, app Windows, instalador e repositorio GitHub. A principal atencao agora deve sair de "fazer funcionar" e ir para "publicar com seguranca".
+
+Antes de uma publicacao online, os pontos mais importantes sao:
+
+- Definir monetizacao.
+- Corrigir/modernizar Billing se for usado.
+- Criar pipeline de build.
+- Criar release Android assinado.
+- Melhorar testes das regras criticas.
+- Organizar documentacao e artefatos.
+- Assinar instalador Windows se o publico final for usar fora de ambiente de teste.
+
+Recomendacao final: nao aplicar mudancas grandes de billing, release e instalador ao mesmo tempo. O caminho mais seguro e trabalhar em pequenas etapas revisaveis:
+
+1. Organizar docs e CI.
+2. Criar release Android assinado.
+3. Melhorar testes.
+4. Decidir monetizacao.
+5. Implementar billing ou licenciamento.
+6. Publicar artefatos em release versionada.

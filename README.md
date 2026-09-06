@@ -10,7 +10,7 @@ A versao Android entrega um MVP funcional para teste em celular:
 - indicador visual de rolagem na lateral direita da lista;
 - upload de arquivo de audio pelo seletor do Android;
 - botao Salvar copiando o arquivo para o armazenamento interno privado do app;
-- Play/Pause por box usando players independentes com Media3/ExoPlayer;
+- Play/Pause por box com Media3/ExoPlayer e reproducao exclusiva no Android;
 - Reiniciar por box voltando para 00:00;
 - volume independente por box com botoes de ajuste;
 - cadeado bloqueando envio, salvamento e volume, sem bloquear Play/Pause e Reiniciar;
@@ -62,4 +62,4 @@ No PowerShell, dentro de `X:\GPT\boxplay`:
 
 ## Proxima fase recomendada
 
-Validar no aparelho ou computador real: salvar varios audios, tocar dois ou mais simultaneamente, pausar/continuar, reiniciar, bloquear, rolar ate os boxes finais e fechar/abrir o app para confirmar a persistencia.
+Validar no aparelho ou computador real: salvar varios audios, tocar um audio e confirmar que iniciar outro pausa o anterior no Android, pausar/continuar, reiniciar, bloquear, rolar ate os boxes finais e fechar/abrir o app para confirmar a persistencia.
