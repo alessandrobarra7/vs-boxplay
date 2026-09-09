@@ -8,11 +8,20 @@ import org.junit.Test
 
 class AudioBoxUiStateTest {
     @Test
-    fun emptySlotsCreateExactlyTwentyFixedSlots() {
+    fun emptySlotsDefaultsToNoBoxesInTheScenesModel() {
+        // Scenes now start empty and boxes are added one at a time via
+        // AudioBoxRepository.addBox(), instead of a fixed 20-box layout.
         val boxes = AudioBoxConfig.emptySlots()
 
-        assertEquals(20, boxes.size)
-        assertEquals((1..20).toList(), boxes.map { it.id })
+        assertEquals(0, boxes.size)
+    }
+
+    @Test
+    fun emptySlotsCanCreateAnExplicitNumberOfSlots() {
+        val boxes = AudioBoxConfig.emptySlots(5)
+
+        assertEquals(5, boxes.size)
+        assertEquals((1..5).toList(), boxes.map { it.id })
     }
 
     @Test

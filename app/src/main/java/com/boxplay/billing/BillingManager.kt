@@ -30,8 +30,9 @@ import kotlinx.coroutines.launch
  * Real Google Play Billing wiring for the plan approved in
  * docs/BOXPLAY_PLANO_COMPRA_UNICA_PLAYSTORE_V1.txt: a single non-consumable
  * ("managed") in-app product ([BoxPlayBillingConfig.UnlockAllProductId]) that
- * unlocks boxes [BoxPlayBillingConfig.FirstPremiumBoxId]..[BoxPlayBillingConfig.LastPremiumBoxId].
- * Box [BoxPlayBillingConfig.FreeBoxId] is always free.
+ * unlocks every box in every scene except the single free one. Only box
+ * [BoxPlayBillingConfig.FreeBoxId] of scene [BoxPlayBillingConfig.FreeSceneId]
+ * is always free — see [BoxPlayBillingConfig.isPremiumBox] for the exact rule.
  *
  * This class only talks to the Play Billing library and reports what it found
  * as a [PurchaseEntitlement] with [EntitlementSource.PlayBilling]. It is a

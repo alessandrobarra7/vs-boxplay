@@ -6,30 +6,44 @@ import org.junit.Test
 
 class PurchaseEntitlementTest {
     @Test
-    fun boxOneIsAvailableWithoutPurchase() {
+    fun boxOneOfFirstSceneIsAvailableWithoutPurchase() {
         val entitlement = PurchaseEntitlement.FreeOnly
 
-        assertTrue(entitlement.canUseBox(1))
+        assertTrue(entitlement.canUseBox(sceneId = 1, boxId = 1))
     }
 
     @Test
-    fun premiumBoxesRequireUnlockPurchase() {
+    fun premiumBoxesInFirstSceneRequireUnlockPurchase() {
         val entitlement = PurchaseEntitlement.FreeOnly
 
-        assertFalse(entitlement.canUseBox(2))
-        assertFalse(entitlement.canUseBox(20))
+        assertFalse(entitlement.canUseBox(sceneId = 1, boxId = 2))
+        assertFalse(entitlement.canUseBox(sceneId = 1, boxId = 20))
+        assertFalse(entitlement.canUseBox(sceneId = 1, boxId = 21))
+        assertFalse(entitlement.canUseBox(sceneId = 1, boxId = 40))
     }
 
     @Test
-    fun unlockAllPurchaseAllowsPremiumBoxes() {
+    fun boxOneOfAnyOtherSceneRequiresUnlockPurchase() {
+        val entitlement = PurchaseEntitlement.FreeOnly
+
+        assertFalse(entitlement.canUseBox(sceneId = 2, boxId = 1))
+        assertFalse(entitlement.canUseBox(sceneId = 15, boxId = 1))
+    }
+
+    @Test
+    fun unlockAllPurchaseAllowsEveryBoxInEveryScene() {
         val entitlement = PurchaseEntitlement.purchased(
             source = EntitlementSource.Backend,
             verifiedAtMillis = 1_000L,
         )
 
-        assertTrue(entitlement.canUseBox(1))
-        assertTrue(entitlement.canUseBox(2))
-        assertTrue(entitlement.canUseBox(20))
+        assertTrue(entitlement.canUseBox(sceneId = 1, boxId = 1))
+        assertTrue(entitlement.canUseBox(sceneId = 1, boxId = 2))
+        assertTrue(entitlement.canUseBox(sceneId = 1, boxId = 20))
+        assertTrue(entitlement.canUseBox(sceneId = 1, boxId = 21))
+        assertTrue(entitlement.canUseBox(sceneId = 1, boxId = 40))
+        assertTrue(entitlement.canUseBox(sceneId = 2, boxId = 1))
+        assertTrue(entitlement.canUseBox(sceneId = 15, boxId = 40))
     }
 
     @Test
@@ -41,6 +55,7 @@ class PurchaseEntitlementTest {
             verifiedAtMillis = 1_000L,
         )
 
-        assertFalse(entitlement.canUseBox(2))
+        assertFalse(entitlement.canUseBox(sceneId = 1, boxId = 2))
+        assertFalse(entitlement.canUseBox(sceneId = 2, boxId = 1))
     }
 }

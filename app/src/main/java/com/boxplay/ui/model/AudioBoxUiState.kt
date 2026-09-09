@@ -10,14 +10,31 @@ enum class AudioPlaybackState(val label: String) {
     Error("Erro"),
 }
 
+data class AudioSceneUiState(
+    val id: Int,
+    val name: String,
+    val boxCount: Int,
+    val isSelected: Boolean,
+    val isLocked: Boolean,
+)
+
+data class AudioSceneSectionUiState(
+    val scene: AudioSceneUiState,
+    val boxes: List<AudioBoxUiState>,
+    val canAddBox: Boolean,
+)
+
 data class AudioBoxUiState(
     val id: Int,
+    val sceneId: Int = 1,
     val displayName: String,
+    val customLabel: String? = null,
     val originalFileName: String?,
     val internalFilePath: String?,
     val hasPendingAudio: Boolean,
     val volume: Float,
     val isLocked: Boolean,
+    val isSceneLocked: Boolean = false,
     val playbackState: AudioPlaybackState,
     val statusMessage: String,
     // FIX: isLocked is the user's own manual "cadeado" toggle. isLockedByPaywall
@@ -49,4 +66,10 @@ data class AudioBoxUiState(
 
     val canChangeVolume: Boolean
         get() = canEditSettings && playbackState != AudioPlaybackState.Saving
+
+    val canRename: Boolean
+        get() = canEditSettings && playbackState != AudioPlaybackState.Saving
+
+    val canDelete: Boolean
+        get() = !isSceneLocked && canEditSettings && playbackState != AudioPlaybackState.Saving
 }

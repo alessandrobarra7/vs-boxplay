@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="com.android.vending.BILLING" />
@@ -7,9 +8,12 @@
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_boxplay_icon"
-        android:label="BOXPLAY"
+        android:label="VSPLAY BARRA7"
         android:supportsRtl="true"
-        android:theme="@style/Theme.BoxPlay">
+        android:largeHeap="true"
+        android:theme="@style/Theme.BoxPlay"
+        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+        tools:replace="android:appComponentFactory,android:label">
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -22,4 +26,3 @@
     </application>
 
 </manifest>
-

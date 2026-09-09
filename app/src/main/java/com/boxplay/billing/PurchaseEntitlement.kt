@@ -9,8 +9,9 @@ data class PurchaseEntitlement(
     val unlocksAllBoxes: Boolean
         get() = productId == BoxPlayBillingConfig.UnlockAllProductId && state == PurchaseState.Purchased
 
-    fun canUseBox(boxId: Int): Boolean =
-        BoxPlayBillingConfig.isFreeBox(boxId) || (BoxPlayBillingConfig.isPremiumBox(boxId) && unlocksAllBoxes)
+    fun canUseBox(sceneId: Int, boxId: Int): Boolean =
+        BoxPlayBillingConfig.isFreeBox(sceneId, boxId) ||
+            (BoxPlayBillingConfig.isPremiumBox(sceneId, boxId) && unlocksAllBoxes)
 
     companion object {
         val FreeOnly = PurchaseEntitlement(

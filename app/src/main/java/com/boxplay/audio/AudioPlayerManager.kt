@@ -71,6 +71,20 @@ class AudioPlayerManager(
         loadIfNeeded(holderFor(boxId), path, volume)
     }
 
+    fun stop(boxId: Int) {
+        holders[boxId]?.let { holder ->
+            holder.player.pause()
+            holder.player.seekTo(0)
+            if (holder.sourcePath != null) {
+                onUpdate(AudioPlayerUpdate(boxId, PlayerRuntimeState.Ready))
+            }
+        }
+    }
+
+    fun release(boxId: Int) {
+        holders.remove(boxId)?.player?.release()
+    }
+
     fun stopAll() {
         holders.forEach { (boxId, holder) ->
             if (holder.sourcePath != null) {
