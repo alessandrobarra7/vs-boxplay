@@ -1,0 +1,314 @@
+BOXPLAY - STATUS ATUAL DO PROJETO
+
+Este documento registra a fase atual do projeto BOXPLAY, o que ja foi modificado
+e as decisoes confirmadas ate este momento.
+
+======================================================================
+1. FASE ATUAL
+======================================================================
+
+O projeto esta em duas frentes:
+
+1. Produto/MVP
+   - O MVP Android do BOXPLAY ja existe e esta funcional para testes locais.
+   - O MVP Windows/Electron tambem ja existe em pasta separada.
+
+2. Publicacao Google Play / compra unica
+   - A Fase 0, de auditoria e decisoes principais, foi consolidada.
+   - A Fase 1A, de preparacao inicial para compra unica, foi concluida.
+   - A Fase 1B, de BillingManager real e paywall conectado ao client, foi concluida.
+   - Backend serverless de verificacao, Play App Signing e AAB release ainda nao
+     foram concluidos.
+
+Resumo da fase:
+MVP funcional criado, com compra unica ja funcional do lado do app (cliente).
+Falta apenas o backend de validacao/entitlement, a assinatura de release
+definitiva e a geracao do AAB final antes de publicar.
+
+======================================================================
+2. ESTADO ATUAL DO ANDROID
+======================================================================
+
+Configuracao atual do app Android:
+
+- applicationId: com.boxplay
+- namespace: com.boxplay
+- minSdk: 26
+- targetSdk: 36
+- compileSdk: 37
+- versionCode: 3
+- versionName: 0.2.1
+- linguagem: Kotlin
+- interface: Jetpack Compose
+- audio: Media3/ExoPlayer
+- persistencia local: DataStore
+- billing: Google Play Billing KTX 9.1.0, BillingManager real implementado
+
+Funcionalidades Android ja implementadas:
+
+- 20 boxes de audio.
+- Grade compacta com rolagem vertical.
+- Upload de arquivo de audio pelo seletor do Android.
+- Botao Salvar copiando o audio para o armazenamento privado do app.
+- Play/Pause por box.
+- Reiniciar por box.
+- Controle de volume por box.
+- Cadeado por box.
+- Botao superior para parar todos os audios.
+- Persistencia local de nome, caminho, volume e cadeado.
+- Regra de reproducao exclusiva: apenas uma trilha pode tocar por vez.
+- BillingManager real conectado ao Google Play Billing (produto INAPP
+  boxplay_unlock_all): conexao, consulta de ProductDetails, fluxo de compra,
+  acknowledge e consulta de compras existentes.
+- A checagem local do Play Billing continua ativa enquanto o backend nao
+  existe. A remocao de "desbloqueio local antigo" significa apenas que uma
+  consulta sem compra ativa volta para FreeOnly, evitando manter desbloqueio
+  velho na mesma sessao.
+- Paywall visual nos boxes 2 a 20 (PaywallCardContent), com botao de compra
+  mostrando o preco real vindo do Play Billing.
+- Snackbar exibindo erros de billing ao usuario (antes ficavam silenciosos).
+- Correcao de crash em queryDisplayName quando o content provider do arquivo
+  selecionado lanca excecao em vez de retornar nulo.
+- Corruption handler no DataStore de configuracao dos boxes, evitando que uma
+  gravacao corrompida deixe o app preso em crash permanente na abertura.
+
+Regra de audio atual:
+
+Quando uma trilha esta tocando e o usuario inicia outra, a trilha anterior
+e pausada automaticamente. O projeto nao deve permitir dois audios tocando
+ao mesmo tempo.
+
+======================================================================
+3. ESTADO ATUAL DO WINDOWS DESKTOP
+======================================================================
+
+A versao Windows fica em:
+
+desktop-windows/
+
+Funcionalidades Windows ja implementadas:
+
+- 20 boxes prontos.
+- Lista com barra de rolagem nativa.
+- Envio de audio por seletor de arquivo.
+- Salvamento local em area privada do aplicativo.
+- Play/Pause.
+- Reiniciar.
+- Volume.
+- Cadeado.
+- Parar todos.
+- Persistencia em JSON local.
+
+Importante:
+A compra Google Play cobre apenas a frente Android nesta etapa. A versao Windows
+nao deve ser misturada com a compra Google Play sem arquitetura de conta
+multiplataforma.
+
+======================================================================
+4. MODIFICACOES JA REALIZADAS
+======================================================================
+
+Alteracoes relevantes ja feitas no projeto:
+
+- Criacao do app Android BOXPLAY em Kotlin/Compose.
+- Criacao da estrutura de 20 boxes compactos.
+- Ajuste visual para caber mais itens na tela do celular.
+- Inclusao de rolagem vertical na tela principal.
+- Implementacao de upload, salvamento local e persistencia dos audios.
+- Implementacao de Play/Pause, Reiniciar, volume, cadeado e Parar todos.
+- Correcao para impedir reproducao simultanea de dois audios.
+- Ajuste de versao Android para versionCode 3 e versionName 0.2.1.
+- Ajuste de targetSdk para 36 mantendo compileSdk 37 por exigencia das bibliotecas atuais.
+- Geracao de APKs de teste e arquivos de distribuicao local.
+- Criacao da versao Windows/Electron.
+- Criacao de relatorio de auditoria e melhorias.
+- Criacao do plano interno de assinatura Play Store V1, agora substituido nos pontos comerciais por compra unica.
+- Criacao do plano interno de compra unica Play Store V1.
+- Atualizacao do .gitignore para proteger arquivos sensiveis.
+- Adicao inicial de dependencia/permissoes/modelos para compra unica.
+- Implementacao do BillingManager real (BillingClient, produto INAPP
+  boxplay_unlock_all, acknowledge, retry de conexao com guarda de ciclo de
+  vida via isDestroyed).
+- Conexao do paywall (PaywallCardContent) ao ViewModel e ao BillingManager.
+- Exibicao de erros de billing via Snackbar em BoxPlayScreen.
+- Correcao de crash em queryDisplayName (LocalAudioStorage).
+- Corruption handler no DataStore (AudioBoxRepository).
+- Testes unitarios da regra de bloqueio por paywall em AudioBoxUiStateTest.
+- Scaffold de signingConfig de release lido por variaveis de ambiente/segredo
+  (nenhuma keystore ou senha commitada) em app/build.gradle.kts.
+- Tarefa Gradle :app:validateReleaseSigning vinculada a preReleaseBuild,
+  assembleRelease e bundleRelease para impedir release sem todas as variaveis
+  obrigatorias de assinatura logo no inicio da build.
+- Workflow de debug APK automatico em push, rodando check antes do build.
+- Workflow de release AAB/APK manual nesta fase, com check antes dos builds e
+  falha explicita quando secrets de release estiverem ausentes.
+
+======================================================================
+5. DECISOES CONFIRMADAS
+======================================================================
+
+Decisoes de produto e arquitetura ja confirmadas:
+
+- O identificador definitivo do Android sera com.boxplay.
+- A regra oficial de audio e apenas uma trilha tocando por vez.
+- O app tera 20 boxes como base.
+- Box 1 permanece gratis.
+- Boxes 2 a 20 serao liberados por compra unica.
+- Produto planejado: boxplay_unlock_all.
+- O modelo comercial aprovado e compra unica, nao assinatura mensal/anual.
+- A publicacao sera focada em Android/Google Play nesta etapa.
+- A versao Windows nao entra na compra Google Play nesta fase.
+- O app nao deve usar Pix ou pagamento paralelo dentro do Android nesta fase.
+- O app nao deve usar Stripe como substituto do Play Billing sem nova analise.
+- A arquitetura recomendada e backend serverless, sem VM e sem IP publico fixo.
+- Nenhuma senha, chave, keystore, token, service account ou .env real deve entrar no Git.
+
+======================================================================
+6. DECISOES AINDA PENDENTES
+======================================================================
+
+Antes de implementar Billing completo e publicar na Play Store, ainda faltam decidir:
+
+- Preco da compra unica.
+- Nome publico do produto no Play Console.
+- Se o MVP Android tera conta propria ou usara apenas restauracao pela conta Google.
+- Se o backend sera Firebase/Cloud Functions ou Cloud Run.
+- Politica de privacidade e termos de uso.
+- E-mail oficial de suporte.
+- Estrategia de testes internos e fechados na Play Console.
+- Processo de criacao e guarda da upload key.
+
+======================================================================
+7. O QUE AINDA NAO FOI IMPLEMENTADO
+======================================================================
+
+Ainda nao existe no projeto:
+
+- Verificacao de compra no backend (o app hoje confia apenas na resposta
+  local do Play Billing; isso e aceitavel para teste, mas nao para venda
+  real sem essa camada, ver secao 11).
+- Backend serverless (Cloud Function/Cloud Run).
+- Firestore.
+- Pub/Sub / RTDN.
+- Play App Signing configurado de fato no Play Console.
+- Chave de upload gerada e guardada pelo dono do projeto.
+- Build release assinado com uma chave de producao real (o scaffold e a
+  validacao ja existem; falta gerar e configurar a chave/secrets reais).
+- AAB final para Play Store.
+- Testes reais de compra (exigem produto criado no Play Console e conta de
+  testador de licenca).
+
+======================================================================
+8. ARQUIVOS IMPORTANTES
+======================================================================
+
+Arquivos e pastas principais:
+
+- app/build.gradle.kts
+- app/src/main/AndroidManifest.xml
+- app/src/main/java/com/boxplay/audio/AudioPlayerManager.kt
+- app/src/main/java/com/boxplay/billing/
+- app/src/main/java/com/boxplay/data/
+- app/src/main/java/com/boxplay/ui/
+- app/src/main/java/com/boxplay/viewmodel/
+- app/src/test/java/com/boxplay/billing/
+- app/src/test/java/com/boxplay/ui/model/AudioBoxUiStateTest.kt
+- .github/workflows/build-debug-apk.yml
+- .github/workflows/build-release-aab.yml
+- desktop-windows/
+- docs/BOXPLAY_PLANO_COMPRA_UNICA_PLAYSTORE_V1.txt
+- docs/BOXPLAY_PLANO_ASSINATURA_PLAYSTORE_V1.txt
+- .gitignore
+- README.md
+
+======================================================================
+9. TESTES E VALIDACOES RECENTES
+======================================================================
+
+Comando Android usado para validacao:
+
+.\gradlew.bat check :app:assembleDebug --console=plain
+
+Resultado esperado para aceitar a fase:
+
+BUILD SUCCESSFUL
+
+Validacoes realizadas em etapas recentes:
+
+- Build Android.
+- Lint Android.
+- Testes unitarios Android disponiveis.
+- Geracao de APK debug.
+- Validacao de assinatura de APK com apksigner em etapas anteriores.
+- Validacao de metadados de APK com aapt2 em etapas anteriores.
+- Validacao de regras do .gitignore com git check-ignore.
+
+======================================================================
+10. PROXIMA ETAPA RECOMENDADA
+======================================================================
+
+Antes de continuar, recomenda-se:
+
+1. Revisar, commitar e enviar as mudancas da Fase 1B nesta mesma branch:
+   feature/google-play-one-time-purchase
+
+2. Nao rodar workflow de release antes de configurar os secrets de assinatura.
+
+3. Nao criar produto real na Play Console ainda (fluxo de teste primeiro).
+
+3. Implementar o backend em pequenos passos, em pasta separada ou
+   repositorio dedicado, sem fazer deploy sem autorizacao explicita.
+
+Proxima fase recomendada (Fase 2 - backend):
+
+- Cloud Function que recebe purchaseToken + productId do app.
+- Validacao contra a Google Play Developer API (purchases.products.get).
+- Gravacao do entitlement no Firestore, vinculado a conta Google do usuario.
+- Acknowledge da compra feito pelo backend quando aplicavel.
+- Assinatura do topico RTDN/Pub/Sub para reembolso/revogacao.
+- Troca da fonte de verdade do app: sair de EntitlementSource.PlayBilling
+  (local) para EntitlementSource.Backend assim que o endpoint existir.
+- Nao criar produto real na Play Console sem aprovacao.
+- Nao gerar credenciais automaticamente.
+- Nao fazer deploy de backend sem autorizacao.
+
+======================================================================
+11. RISCOS ATUAIS
+======================================================================
+
+Riscos tecnicos e operacionais:
+
+- O app ainda nao foi instalado com sucesso em todos os celulares de teste.
+  Causa identificada em pelo menos um caso: build de debug (android:debuggable
+  = true, assinado com a chave de debug generica) sendo bloqueado por camadas
+  de seguranca de fabricante (MIUI/Samsung) fora do proprio celular de
+  desenvolvimento. Builds de release (nao debuggable, chave propria) nao tem
+  esse problema.
+- Ainda nao existe assinatura release definitiva (o scaffold em
+  app/build.gradle.kts e nos workflows de CI ja existe; agora a validacao
+  falha claramente se os secrets estiverem ausentes; falta gerar a chave de
+  verdade e configurar como segredo).
+- O app confia apenas na verificacao local do Play Billing ate o backend
+  existir. Isso e aceitavel para testes, mas insuficiente para vender de
+  verdade: um dispositivo com root pode falsificar esse estado localmente.
+  Nao anunciar/vender publicamente antes do backend de validacao existir.
+- Ainda nao existe backend para validar compras nem para reagir a
+  reembolso/revogacao (RTDN).
+- Documentos antigos que falam em assinatura mensal/anual devem ser
+  considerados revogados nos pontos comerciais.
+
+======================================================================
+12. CONCLUSAO
+======================================================================
+
+O BOXPLAY esta em fase de MVP funcional com compra unica ja implementada do
+lado do cliente (BillingManager real, paywall conectado, preco exibido).
+
+A base Android ja tem soundboard funcional com 20 boxes e reproducao exclusiva.
+A base Windows existe separadamente. A frente Google Play usa compra unica,
+com Box 1 gratis e boxes 2 a 20 bloqueados ate compra validada pelo Play
+Billing local.
+
+O proximo passo tecnico seguro e implementar o backend serverless de
+verificacao (Cloud Function + Firestore + RTDN) antes de criar o produto real
+no Play Console e antes de qualquer divulgacao comercial do app.

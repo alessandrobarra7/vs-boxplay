@@ -48,6 +48,34 @@ class LocalAudioStorage(private val context: Context) {
         }
     }
 
+    /**
+     * Igual a [copyFromUri], mas a origem já é um [File] local em vez de um
+     * `content://` Uri — usado pelo editor multipista para entregar o
+     * arquivo já mixado a um Box através do MESMO armazenamento interno que
+     * o botão "Salvar" normal usa. Antes disso, o multipista apontava o
+     * Box direto para o arquivo dentro de `multitrack-renders/<projectId>/`,
+     * que pertence e é apagado pelo próprio módulo multipista a cada nova
+     * exportação daquele projeto — fazendo o Box perder o áudio
+     * silenciosamente na exportação seguinte. Copiando para cá, o Box passa
+     * a ser dono do seu próprio arquivo, com o mesmo ciclo de vida de
+     * qualquer áudio salvo manualmente.
+     */
+    suspend fun copyFromFile(boxId: Int, sourceFile: File, displayName: String): StoredAudio = withContext(Dispatchers.IO) {
+        val safeName = displayName.toSafeFileName()
+        val target = File(audioDirectory, "box_${boxId}_${System.currentTimeMillis()}_$safeName")
+
+        if (sourceFile.length() == 0L) {
+            error("O arquivo mixado está vazio.")
+        }
+
+        sourceFile.copyTo(target, overwrite = true)
+
+        StoredAudio(
+            originalFileName = displayName,
+            internalFilePath = target.absolutePath,
+        )
+    }
+
     fun fileExists(path: String?): Boolean = path?.let { File(it).isFile } == true
 
     fun deleteIfInternal(path: String?) {
@@ -68,19 +96,30 @@ class LocalAudioStorage(private val context: Context) {
     }
 
     private fun queryDisplayName(uri: Uri): String? {
-        val cursor: Cursor = context.contentResolver.query(
-            uri,
-            arrayOf(OpenableColumns.DISPLAY_NAME),
-            null,
-            null,
-            null,
-        ) ?: return null
+        // FIX: some content providers throw instead of returning null or an
+        // empty cursor (SecurityException when the grant was revoked,
+        // IllegalArgumentException for an unsupported/malformed uri, etc.).
+        // This used to crash the app synchronously as soon as the user picked
+        // such a file. Any failure here now just falls back to no queried
+        // name, same as if the cursor had come back empty — readDisplayName()
+        // already has a fallback chain for that case.
+        return try {
+            val cursor: Cursor = context.contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            ) ?: return null
 
-        cursor.use {
-            if (!it.moveToFirst()) return null
-            val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (nameIndex < 0) return null
-            return it.getString(nameIndex)?.takeIf { name -> name.isNotBlank() }
+            cursor.use {
+                if (!it.moveToFirst()) return null
+                val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex < 0) return null
+                it.getString(nameIndex)?.takeIf { name -> name.isNotBlank() }
+            }
+        } catch (error: Exception) {
+            null
         }
     }
 

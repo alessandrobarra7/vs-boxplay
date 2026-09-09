@@ -34,6 +34,7 @@ class AudioPlayerManager(
             holder.player.seekTo(0)
         }
 
+        pauseOtherPlayers(boxId)
         holder.player.play()
         onUpdate(AudioPlayerUpdate(boxId, PlayerRuntimeState.Playing))
     }
@@ -51,6 +52,7 @@ class AudioPlayerManager(
         holder.player.seekTo(0)
 
         if (wasPlaying) {
+            pauseOtherPlayers(boxId)
             holder.player.play()
             onUpdate(AudioPlayerUpdate(boxId, PlayerRuntimeState.Playing))
         } else {
@@ -67,6 +69,20 @@ class AudioPlayerManager(
         val file = File(path)
         if (!file.isFile) return
         loadIfNeeded(holderFor(boxId), path, volume)
+    }
+
+    fun stop(boxId: Int) {
+        holders[boxId]?.let { holder ->
+            holder.player.pause()
+            holder.player.seekTo(0)
+            if (holder.sourcePath != null) {
+                onUpdate(AudioPlayerUpdate(boxId, PlayerRuntimeState.Ready))
+            }
+        }
+    }
+
+    fun release(boxId: Int) {
+        holders.remove(boxId)?.player?.release()
     }
 
     fun stopAll() {
@@ -127,6 +143,15 @@ class AudioPlayerManager(
         })
 
         holder
+    }
+
+    private fun pauseOtherPlayers(activeBoxId: Int) {
+        holders.forEach { (boxId, holder) ->
+            if (boxId != activeBoxId && holder.player.isPlaying) {
+                holder.player.pause()
+                onUpdate(AudioPlayerUpdate(boxId, PlayerRuntimeState.Paused))
+            }
+        }
     }
 
     private data class PlayerHolder(

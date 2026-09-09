@@ -1,0 +1,109 @@
+BOXPLAY - PLANO DE COMPRA UNICA PLAY STORE - VERSAO 1
+
+Este documento substitui as referencias anteriores a assinatura mensal/anual
+quando o assunto for modelo comercial do Android na Google Play.
+
+======================================================================
+1. DECISAO COMERCIAL DEFINITIVA
+======================================================================
+
+Modelo aprovado:
+
+- Compra unica no Google Play Billing.
+- Produto in-app nao consumivel.
+- Sem assinatura mensal.
+- Sem assinatura anual.
+- Sem trial de assinatura.
+- Sem Pix, Stripe ou pagamento paralelo dentro do app Android nesta fase.
+
+Produto aprovado para planejamento:
+
+- productId: boxplay_unlock_all
+- tipo Google Play Billing: INAPP
+- comportamento: desbloquear permanentemente os boxes 2 a 20.
+
+Regra funcional:
+
+- Box 1 permanece gratis.
+- Boxes 2 a 20 exigem compra unica validada.
+- A regra de audio continua sendo uma trilha por vez.
+
+======================================================================
+2. ESTADO DE IMPLEMENTACAO APOS FASE 1A
+======================================================================
+
+A Fase 1A prepara o projeto, mas ainda nao entrega compra funcional ponta a ponta.
+
+Incluido nesta fase:
+
+- Dependencia Google Play Billing KTX 9.1.0 no Gradle.
+- Permissao INTERNET no AndroidManifest para comunicacao futura com backend.
+- Permissao com.android.vending.BILLING no AndroidManifest.
+- Modelos iniciais de billing/entitlement em com.boxplay.billing.
+- Testes unitarios da regra de entitlement basica.
+- Documentacao do modelo de compra unica.
+
+Ainda nao incluido:
+
+- BillingManager.
+- Consulta real de produtos na Play Store.
+- Fluxo real de compra.
+- Acknowledge de compra.
+- Backend serverless.
+- Firestore.
+- Pub/Sub / RTDN.
+- Verificacao real com Google Play Developer API.
+- Paywall conectado ao fluxo real.
+- AAB release assinado.
+
+======================================================================
+3. ARQUITETURA RECOMENDADA
+======================================================================
+
+O app Android deve usar Google Play Billing apenas como integracao de compra.
+A decisao final de desbloqueio para venda real deve passar por backend seguro.
+
+Fluxo alvo:
+
+1. App inicia compra do produto boxplay_unlock_all.
+2. Google Play retorna purchaseToken.
+3. App envia purchaseToken e productId ao backend por HTTPS.
+4. Backend valida na Google Play Developer API usando purchases.products.get.
+5. Backend confirma packageName com.boxplay e estado purchased.
+6. Backend grava entitlement no Firestore.
+7. Backend faz acknowledge da compra quando aplicavel.
+8. App consulta/sincroniza entitlement e libera boxes 2 a 20.
+9. Eventos de reembolso/revogacao sao tratados via RTDN/PubSub.
+
+======================================================================
+4. SEGURANCA
+======================================================================
+
+Nao colocar no app Android:
+
+- service account JSON;
+- senha;
+- token;
+- chave privada;
+- segredo do backend;
+- regra local definitiva como isPremium=true.
+
+O repositorio e publico. Credenciais devem ficar fora do Git, usando ambiente
+serverless, Secret Manager ou configuracao local ignorada.
+
+======================================================================
+5. PROXIMA FASE
+======================================================================
+
+A proxima fase deve implementar, em mudancas pequenas:
+
+1. BillingManager usando BillingClient para produto INAPP.
+2. Consulta de ProductDetails para boxplay_unlock_all.
+3. Estado de compra pendente/comprada/erro/cancelada.
+4. Paywall simples para boxes 2 a 20.
+5. Backend serverless em pasta separada ou repositorio dedicado.
+6. Endpoint de verificacao de purchaseToken.
+7. Testes unitarios e build Android a cada etapa.
+
+Nao criar produto real na Play Console, deploy de backend ou credenciais sem
+autorizacao explicita.
