@@ -21,7 +21,6 @@ import android.provider.OpenableColumns
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.boxplay.data.AudioBoxConfig
 import com.boxplay.data.AudioBoxRepository
 import com.boxplay.data.AudioSceneState
 import com.boxplay.data.LocalAudioStorage
@@ -370,51 +369,36 @@ class MultitrackViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     /**
-     * Vincula o projeto à Cena/Box escolhida e aponta o Box para o áudio já
-     * mixado e já salvo na pasta do usuário (etapa final do fluxo — a
-     * mixagem em si já aconteceu em [beginExport]). O Box passa a tocar
-     * este único arquivo como um áudio avulso "normal", sem precisar
-     * sincronizar pistas.
-     *
-     * FIX (investigação "botão Salvar desacoplado do multipista"): antes,
-     * esta função gravava `internalFilePath` apontando DIRETO para o
-     * arquivo em `multitrack-renders/<projectId>/`, um arquivo que pertence
-     * ao módulo multipista e é apagado por [MultitrackRenderStorage] a cada
-     * nova exportação do mesmo projeto — na próxima vez que o usuário
-     * exportasse, o Box perdia o áudio silenciosamente. Agora o arquivo
-     * mixado é copiado para o armazenamento interno do PRÓPRIO Box (o mesmo
-     * usado por `BoxPlayViewModel.onSaveClicked`), com o mesmo ciclo de
-     * vida de um áudio salvo manualmente: o Box passa a ser dono do seu
-     * arquivo, e o anterior (se houver) é apagado.
+     * Copia a mixagem para uma pendencia independente do projeto.
+     * O audio salvo do Box nao muda ate o usuario confirmar em Salvar.
+     * O retorno ao soundboard ocorre somente apos registrar a pendencia.
      */
-    fun confirmExportDestination(sceneId: Int, boxId: Int, sceneName: String) {
+    fun confirmExportDestination(sceneId: Int, boxId: Int, sceneName: String, onComplete: () -> Unit) {
+        if (_isExporting.value) return
         val renderedFile = pendingRenderedFile ?: return
-        _exportDialogVisible.value = false
-        updateProject { it.copy(linkedSceneId = sceneId, linkedBoxId = boxId) }
+        _isExporting.value = true
 
         viewModelScope.launch {
-            val existingBox = sceneState.value.scenes.find { it.id == sceneId }
-                ?.boxes?.find { it.id == boxId }
-                ?: AudioBoxConfig.emptySlot(boxId)
-            val previousInternalPath = existingBox.internalFilePath
-
-            val storedAudio = withContext(Dispatchers.IO) {
-                boxAudioStorage.copyFromFile(boxId, renderedFile, renderedFile.name)
+            var stagedPath: String? = null
+            var registered = false
+            try {
+                val storedAudio = boxAudioStorage.copyFromFile(boxId, renderedFile, renderedFile.name)
+                stagedPath = storedAudio.internalFilePath
+                val previousPending = boxRepository.stageExport(sceneId, boxId, storedAudio)
+                registered = true
+                withContext(Dispatchers.IO) { boxAudioStorage.deleteIfInternal(previousPending) }
+                updateProject { it.copy(linkedSceneId = sceneId, linkedBoxId = boxId) }
+                _exportDialogVisible.value = false
+                _exportMessage.value = "Enviado para \"$sceneName\" > Box $boxId. Confirme no botao Salvar."
+                pendingRenderedFile = null
+                onComplete()
+            } catch (error: Exception) {
+                if (!registered) boxAudioStorage.deleteIfInternal(stagedPath)
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                _exportMessage.value = error.message ?: "Nao foi possivel enviar o audio ao box."
+            } finally {
+                _isExporting.value = false
             }
-
-            val updatedBox = existingBox.copy(
-                displayName = storedAudio.originalFileName,
-                originalFileName = storedAudio.originalFileName,
-                internalFilePath = storedAudio.internalFilePath,
-                updatedAtEpochMillis = System.currentTimeMillis(),
-            )
-            withContext(Dispatchers.IO) {
-                boxRepository.saveConfig(sceneId, updatedBox)
-                boxAudioStorage.deleteIfInternal(previousInternalPath)
-            }
-            _exportMessage.value = "Enviado para \"$sceneName\" > Box $boxId — " +
-                "toca como um áudio normal, sem precisar sincronizar pistas."
-            pendingRenderedFile = null
         }
     }
 

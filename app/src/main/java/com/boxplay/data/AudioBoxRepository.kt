@@ -1,6 +1,7 @@
 package com.boxplay.data
 
 import android.content.Context
+import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
@@ -37,24 +38,78 @@ sealed class DeleteSceneResult {
 }
 
 sealed class DeleteBoxResult {
-    data class Deleted(val internalFilePath: String?) : DeleteBoxResult()
+    data class Deleted(val internalFilePath: String?, val pendingExportPath: String? = null) : DeleteBoxResult()
     object SceneLocked : DeleteBoxResult()
     object NotFound : DeleteBoxResult()
 }
 
-class AudioBoxRepository(private val context: Context) {
-    val sceneState: Flow<AudioSceneState> = context.audioBoxDataStore.data.map { preferences ->
+class AudioBoxRepository internal constructor(private val dataStore: DataStore<Preferences>) {
+    constructor(context: Context) : this(context.audioBoxDataStore)
+
+    val sceneState: Flow<AudioSceneState> = dataStore.data.map { preferences ->
         preferences.toSceneState()
     }
 
     val configs: Flow<List<AudioBoxConfig>> = sceneState.map { it.selectedScene.boxes }
+
+    suspend fun stageExport(sceneId: Int, boxId: Int, audio: StoredAudio): String? {
+        var previousPending: String? = null
+        dataStore.edit { preferences ->
+            val current = preferences.editableBox(sceneId, boxId)
+            previousPending = current.pendingExportPath
+            preferences[boxPendingExportPathKey(sceneId, boxId)] = audio.internalFilePath
+            preferences[boxPendingExportNameKey(sceneId, boxId)] = audio.originalFileName
+            preferences[selectedSceneIdKey] = sceneId
+            preferences.touchScene(sceneId)
+        }
+        return previousPending
+    }
+
+    // Commit against the current box, so a late save cannot revive a deleted box
+    // or discard an export that arrived while the file was being copied.
+    suspend fun confirmAudio(
+        sceneId: Int,
+        boxId: Int,
+        audio: StoredAudio,
+        expectedPendingPath: String?,
+        volume: Float,
+    ): AudioBoxConfig {
+        var previous: AudioBoxConfig? = null
+        dataStore.edit { preferences ->
+            val current = preferences.editableBox(sceneId, boxId)
+            check(current.pendingExportPath == expectedPendingPath) {
+                "O audio pendente mudou. Confira o box e tente salvar novamente."
+            }
+            previous = current
+            preferences.saveBox(sceneId, current.copy(
+                displayName = audio.originalFileName,
+                originalFileName = audio.originalFileName,
+                internalFilePath = audio.internalFilePath,
+                volume = volume,
+                updatedAtEpochMillis = System.currentTimeMillis(),
+            ))
+            preferences.remove(boxPendingExportPathKey(sceneId, boxId))
+            preferences.remove(boxPendingExportNameKey(sceneId, boxId))
+            preferences.touchScene(sceneId)
+        }
+        return checkNotNull(previous)
+    }
+
+    private fun Preferences.editableBox(sceneId: Int, boxId: Int): AudioBoxConfig {
+        check(sceneId in sceneIdsOrDefault()) { "Cena nao encontrada." }
+        val scene = readScene(sceneId)
+        check(!scene.isLocked) { "Destrave a cena antes de alterar o audio." }
+        val box = checkNotNull(scene.boxes.find { it.id == boxId }) { "Box nao encontrado." }
+        check(!box.isLocked) { "Desbloqueie o box antes de alterar o audio." }
+        return box
+    }
 
     suspend fun saveConfig(config: AudioBoxConfig) {
         saveConfig(AudioSceneConfig.DEFAULT_SCENE_ID, config)
     }
 
     suspend fun saveConfig(sceneId: Int, config: AudioBoxConfig) {
-        context.audioBoxDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences.ensureSceneExists(sceneId)
             preferences.ensureBoxExists(sceneId, config.id)
             preferences.saveBox(sceneId, config)
@@ -63,7 +118,7 @@ class AudioBoxRepository(private val context: Context) {
     }
 
     suspend fun selectScene(sceneId: Int) {
-        context.audioBoxDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             val ids = preferences.sceneIdsOrDefault()
             if (sceneId in ids) {
                 preferences[selectedSceneIdKey] = sceneId
@@ -74,7 +129,7 @@ class AudioBoxRepository(private val context: Context) {
     suspend fun createScene(name: String) {
         val normalizedName = name.trim().take(MAX_SCENE_NAME_LENGTH).ifBlank { "Cena" }
 
-        context.audioBoxDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             val currentIds = preferences.sceneIdsOrDefault()
             if (currentIds.size >= AudioSceneConfig.MAX_SCENE_COUNT) return@edit
 
@@ -97,7 +152,7 @@ class AudioBoxRepository(private val context: Context) {
     suspend fun renameScene(sceneId: Int, name: String) {
         val normalizedName = name.trim().take(MAX_SCENE_NAME_LENGTH).ifBlank { "Cena $sceneId" }
 
-        context.audioBoxDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             if (sceneId !in preferences.sceneIdsOrDefault()) return@edit
             preferences[sceneNameKey(sceneId)] = normalizedName
             preferences.touchScene(sceneId)
@@ -107,7 +162,7 @@ class AudioBoxRepository(private val context: Context) {
     suspend fun deleteScene(sceneId: Int): DeleteSceneResult {
         var result: DeleteSceneResult = DeleteSceneResult.NotFound
 
-        context.audioBoxDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             val currentIds = preferences.sceneIdsOrDefault()
             result = when {
                 sceneId !in currentIds -> DeleteSceneResult.NotFound
@@ -118,7 +173,9 @@ class AudioBoxRepository(private val context: Context) {
                         DeleteSceneResult.Locked
                     } else {
                         val boxIds = scene.boxes.map { box -> box.id }
-                        val deletedPaths = boxIds.mapNotNull { boxId -> preferences.boxInternalPath(sceneId, boxId) }
+                        val deletedPaths = scene.boxes.flatMap { box ->
+                            listOfNotNull(box.internalFilePath, box.pendingExportPath)
+                        }
 
                         boxIds.forEach { boxId -> preferences.removeBox(sceneId, boxId) }
                         preferences.removeScene(sceneId)
@@ -146,7 +203,7 @@ class AudioBoxRepository(private val context: Context) {
     suspend fun addBox(sceneId: Int): Int? {
         var addedBoxId: Int? = null
 
-        context.audioBoxDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences.ensureSceneExists(sceneId)
             val scene = preferences.readScene(sceneId)
             if (scene.isLocked || scene.boxCount >= AudioBoxConfig.MAX_BOX_COUNT) return@edit
@@ -170,7 +227,7 @@ class AudioBoxRepository(private val context: Context) {
     suspend fun deleteBox(sceneId: Int, boxId: Int): DeleteBoxResult {
         var result: DeleteBoxResult = DeleteBoxResult.NotFound
 
-        context.audioBoxDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             val currentIds = preferences.sceneIdsOrDefault()
             if (sceneId !in currentIds) {
                 result = DeleteBoxResult.NotFound
@@ -190,7 +247,7 @@ class AudioBoxRepository(private val context: Context) {
                     preferences.removeBox(sceneId, boxId)
                     preferences.touchScene(sceneId)
 
-                    DeleteBoxResult.Deleted(deletedPath)
+                    DeleteBoxResult.Deleted(deletedPath, scene.boxes.first { it.id == boxId }.pendingExportPath)
                 }
             }
         }
@@ -199,7 +256,7 @@ class AudioBoxRepository(private val context: Context) {
     }
 
     suspend fun setSceneLocked(sceneId: Int, isLocked: Boolean) {
-        context.audioBoxDataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences.ensureSceneExists(sceneId)
             preferences[sceneIsLockedKey(sceneId)] = isLocked
             preferences.touchScene(sceneId)
@@ -272,6 +329,8 @@ class AudioBoxRepository(private val context: Context) {
             volume = (this[boxVolumeKey(sceneId, id)] ?: legacyVolume ?: defaultConfig.volume).coerceIn(0f, 1f),
             isLocked = this[boxIsLockedKey(sceneId, id)] ?: legacyIsLocked ?: defaultConfig.isLocked,
             updatedAtEpochMillis = this[boxUpdatedAtKey(sceneId, id)] ?: legacyUpdatedAt,
+            pendingExportPath = this[boxPendingExportPathKey(sceneId, id)],
+            pendingExportName = this[boxPendingExportNameKey(sceneId, id)],
         )
     }
 
@@ -290,7 +349,8 @@ class AudioBoxRepository(private val context: Context) {
         val isLocked = this[boxIsLockedKey(sceneId, boxId)]
             ?: if (isDefaultScene) this[legacyIsLockedKey(boxId)] else null
 
-        return originalName != null ||
+        return this[boxPendingExportPathKey(sceneId, boxId)] != null ||
+            originalName != null ||
             internalPath != null ||
             !customLabel.isNullOrBlank() ||
             (displayName != null && displayName != defaultConfig.displayName) ||
@@ -372,6 +432,8 @@ class AudioBoxRepository(private val context: Context) {
         remove(boxVolumeKey(sceneId, boxId))
         remove(boxIsLockedKey(sceneId, boxId))
         remove(boxUpdatedAtKey(sceneId, boxId))
+        remove(boxPendingExportPathKey(sceneId, boxId))
+        remove(boxPendingExportNameKey(sceneId, boxId))
 
         if (sceneId == AudioSceneConfig.DEFAULT_SCENE_ID) {
             remove(legacyDisplayNameKey(boxId))
@@ -415,6 +477,8 @@ class AudioBoxRepository(private val context: Context) {
     private fun boxVolumeKey(sceneId: Int, boxId: Int) = floatPreferencesKey("scene_${sceneId}_box_${boxId}_volume")
     private fun boxIsLockedKey(sceneId: Int, boxId: Int) = booleanPreferencesKey("scene_${sceneId}_box_${boxId}_is_locked")
     private fun boxUpdatedAtKey(sceneId: Int, boxId: Int) = longPreferencesKey("scene_${sceneId}_box_${boxId}_updated_at")
+    private fun boxPendingExportPathKey(sceneId: Int, boxId: Int) = stringPreferencesKey("scene_${sceneId}_box_${boxId}_pending_export_path")
+    private fun boxPendingExportNameKey(sceneId: Int, boxId: Int) = stringPreferencesKey("scene_${sceneId}_box_${boxId}_pending_export_name")
 
     private fun legacyDisplayNameKey(id: Int) = stringPreferencesKey("box_${id}_display_name")
     private fun legacyOriginalFileNameKey(id: Int) = stringPreferencesKey("box_${id}_original_file_name")
