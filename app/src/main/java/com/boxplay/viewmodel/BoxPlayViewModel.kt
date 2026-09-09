@@ -18,6 +18,9 @@ import com.boxplay.data.AudioSceneState
 import com.boxplay.data.DeleteBoxResult
 import com.boxplay.data.DeleteSceneResult
 import com.boxplay.data.LocalAudioStorage
+import com.boxplay.data.StoredAudio
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.boxplay.ui.model.AudioBoxUiState
 import com.boxplay.ui.model.AudioPlaybackState
 import com.boxplay.ui.model.AudioSceneSectionUiState
@@ -50,6 +53,7 @@ class BoxPlayViewModel(application: Application) : AndroidViewModel(application)
     // correspondente, deixando a tela voltar a refletir o estado salvo de
     // verdade.
     private val lastKnownConfigTimestamps = mutableMapOf<Int, Long?>()
+    private val lastKnownPendingExports = mutableMapOf<Int, String?>()
 
     // One-time-purchase gating per docs/BOXPLAY_PLANO_COMPRA_UNICA_PLAYSTORE_V1.txt:
     // only box BoxPlayBillingConfig.FreeBoxId of scene
@@ -157,13 +161,17 @@ class BoxPlayViewModel(application: Application) : AndroidViewModel(application)
             scene.boxes.forEach { box ->
                 val runtimeKey = playerKey(scene.id, box.id)
                 val lastKnownTimestamp = lastKnownConfigTimestamps[runtimeKey]
-                if (lastKnownTimestamp != null &&
-                    lastKnownTimestamp != box.updatedAtEpochMillis &&
+                val pendingChanged = lastKnownPendingExports.containsKey(runtimeKey) &&
+                    lastKnownPendingExports[runtimeKey] != box.pendingExportPath
+                if ((pendingChanged || (lastKnownTimestamp != null &&
+                    lastKnownTimestamp != box.updatedAtEpochMillis)) &&
+                    updatedRuntimeStates[runtimeKey]?.playbackState != AudioPlaybackState.Saving &&
                     updatedRuntimeStates.remove(runtimeKey) != null
                 ) {
                     changed = true
                 }
                 lastKnownConfigTimestamps[runtimeKey] = box.updatedAtEpochMillis
+                lastKnownPendingExports[runtimeKey] = box.pendingExportPath
             }
         }
 
@@ -249,6 +257,7 @@ class BoxPlayViewModel(application: Application) : AndroidViewModel(application)
                 is DeleteBoxResult.Deleted -> {
                     releaseRuntime(playerKey(sceneId, boxId))
                     storage.deleteIfInternal(result.internalFilePath)
+                    storage.deleteIfInternal(result.pendingExportPath)
                 }
                 DeleteBoxResult.SceneLocked -> _uiMessage.value = "Destrave a cena antes de excluir o box."
                 DeleteBoxResult.NotFound -> _uiMessage.value = "Box não encontrado."
@@ -298,7 +307,10 @@ class BoxPlayViewModel(application: Application) : AndroidViewModel(application)
         val runtimeKey = playerKey(sceneId, boxId)
         val config = configFor(sceneId, boxId)
         val runtimeState = runtimeFor(runtimeKey)
-        val selectedUri = runtimeState.selectedUri ?: return
+        val selectedUri = runtimeState.selectedUri
+        val pendingPath = config.pendingExportPath
+        if (selectedUri == null && pendingPath == null) return
+        if (runtimeState.playbackState == AudioPlaybackState.Saving) return
 
         if (config.isLocked || isLockedByPaywall(sceneId, boxId)) return
 
@@ -310,23 +322,26 @@ class BoxPlayViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
 
-            val previousPath = config.internalFilePath
             val volume = (runtimeFor(runtimeKey).volumeOverride ?: config.volume).coerceIn(0f, 1f)
+            var copiedPath: String? = null
+            var committed = false
 
             try {
-                val storedAudio = storage.copyFromUri(runtimeKey, selectedUri)
-                repository.saveConfig(
-                    sceneId,
-                    config.copy(
-                        displayName = storedAudio.originalFileName,
-                        originalFileName = storedAudio.originalFileName,
-                        internalFilePath = storedAudio.internalFilePath,
-                        volume = volume,
-                        updatedAtEpochMillis = System.currentTimeMillis(),
-                    ),
-                )
+                val storedAudio = if (selectedUri != null) {
+                    storage.copyFromUri(runtimeKey, selectedUri).also { copiedPath = it.internalFilePath }
+                } else {
+                    check(storage.fileExists(pendingPath)) { "Arquivo exportado ausente. Exporte novamente." }
+                    StoredAudio(config.pendingExportName ?: "audio.mp3", checkNotNull(pendingPath))
+                }
+                val previous = repository.confirmAudio(sceneId, boxId, storedAudio, pendingPath, volume)
+                committed = true
+                playerManager.stop(runtimeKey)
                 playerManager.load(runtimeKey, storedAudio.internalFilePath, volume)
-                storage.deleteIfInternal(previousPath)
+                withContext(Dispatchers.IO) {
+                    listOfNotNull(previous.internalFilePath, previous.pendingExportPath)
+                        .filter { it != storedAudio.internalFilePath }
+                        .forEach(storage::deleteIfInternal)
+                }
                 updateRuntime(runtimeKey) {
                     it.copy(
                         selectedUri = null,
@@ -336,6 +351,8 @@ class BoxPlayViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
             } catch (error: Throwable) {
+                if (!committed) storage.deleteIfInternal(copiedPath)
+                if (error is kotlinx.coroutines.CancellationException) throw error
                 updateRuntime(runtimeKey) {
                     it.copy(
                         playbackState = AudioPlaybackState.Error,
@@ -446,7 +463,7 @@ class BoxPlayViewModel(application: Application) : AndroidViewModel(application)
         val lockedByPaywall = BoxPlayBillingConfig.isPremiumBox(sceneId, id) && !currentEntitlement.unlocksAllBoxes
         val state = when {
             runtimeState.playbackState == AudioPlaybackState.Saving -> AudioPlaybackState.Saving
-            runtimeState.selectedUri != null -> AudioPlaybackState.Unsaved
+            runtimeState.selectedUri != null || pendingExportPath != null -> AudioPlaybackState.Unsaved
             hasPersistedPath && !fileIsAvailable -> AudioPlaybackState.Error
             runtimeState.playbackState != null -> runtimeState.playbackState
             fileIsAvailable -> AudioPlaybackState.Saved
@@ -454,10 +471,12 @@ class BoxPlayViewModel(application: Application) : AndroidViewModel(application)
         }
         val title = customLabel
             ?: runtimeState.selectedFileName
+            ?: pendingExportName
             ?: originalFileName
             ?: "Box $id"
         val status = when {
             lockedByPaywall -> "Compre para desbloquear"
+            state == AudioPlaybackState.Unsaved && runtimeState.playbackState != AudioPlaybackState.Error -> "Selecionado - salvar"
             runtimeState.statusMessage != null -> runtimeState.statusMessage
             hasPersistedPath && !fileIsAvailable -> "Arquivo ausente"
             isLocked -> "Bloqueado"
@@ -478,7 +497,7 @@ class BoxPlayViewModel(application: Application) : AndroidViewModel(application)
             customLabel = customLabel,
             originalFileName = originalFileName,
             internalFilePath = internalFilePath?.takeIf { fileIsAvailable },
-            hasPendingAudio = runtimeState.selectedUri != null,
+            hasPendingAudio = runtimeState.selectedUri != null || pendingExportPath != null,
             volume = effectiveVolume,
             isLocked = isLocked,
             isSceneLocked = sceneIsLocked,

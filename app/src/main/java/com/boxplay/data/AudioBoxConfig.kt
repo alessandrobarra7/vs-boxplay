@@ -9,6 +9,8 @@ data class AudioBoxConfig(
     val volume: Float,
     val isLocked: Boolean,
     val updatedAtEpochMillis: Long?,
+    val pendingExportPath: String? = null,
+    val pendingExportName: String? = null,
 ) {
     init {
         require(id in FIRST_BOX_ID..MAX_BOX_COUNT) { "Audio box id must be between 1 and 40." }

@@ -13,12 +13,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.boxplay.multitrack.ui.model.MultitrackProjectSummaryUiState
 import com.boxplay.multitrack.viewmodel.MultitrackViewModel
+import com.boxplay.multitrack.ui.components.MultitrackActionButton
 import com.boxplay.ui.theme.BoxPlayBackground
 import com.boxplay.ui.theme.BoxPlayCard
 import com.boxplay.ui.theme.BoxPlayCoral
@@ -68,7 +74,7 @@ fun MultitrackProjectListScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onExit) {
                     Icon(Icons.Filled.ArrowBack, contentDescription = "Voltar ao soundboard", tint = BoxPlayPrimaryText)
                 }
@@ -79,15 +85,10 @@ fun MultitrackProjectListScreen(
                     color = BoxPlayPrimaryText,
                 )
             }
-            Text(
-                text = "+ Novo projeto",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = BoxPlayCoral,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { showCreateDialog = true }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            MultitrackActionButton(
+                label = "Novo projeto",
+                icon = Icons.Rounded.Add,
+                onClick = { showCreateDialog = true },
             )
         }
 
@@ -145,7 +146,7 @@ private fun ProjectSummaryCard(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(text = summary.name, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = BoxPlayPrimaryText)
             Text(
                 text = "${summary.trackCount} pista(s) · ${summary.updatedAtLabel}",
@@ -156,14 +157,21 @@ private fun ProjectSummaryCard(
                 Text(text = "Último destino: $destination", fontSize = 11.sp, color = BoxPlaySecondaryText)
             }
         }
-        Text(
-            text = "Excluir",
-            fontSize = 11.sp,
-            color = BoxPlayCoral,
-            modifier = Modifier
-                .clickable(onClick = onDelete)
-                .padding(4.dp),
-        )
+        FilledIconButton(
+            onClick = onDelete,
+            modifier = Modifier.size(48.dp),
+            shape = RoundedCornerShape(8.dp),
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = BoxPlayCoral.copy(alpha = 0.12f),
+                contentColor = BoxPlayCoral,
+            ),
+        ) {
+            Icon(
+                Icons.Rounded.DeleteOutline,
+                contentDescription = "Excluir projeto ${summary.name}",
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 

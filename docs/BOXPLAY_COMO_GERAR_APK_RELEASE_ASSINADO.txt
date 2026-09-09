@@ -1,0 +1,379 @@
+BOXPLAY - COMO GERAR UM APK RELEASE ASSINADO PARA INSTALAR EM CELULARES
+
+Objetivo deste arquivo
+======================================================================
+
+Este documento explica, de forma tecnica e direta, o que precisa ser feito
+para gerar um arquivo APK correto do BOXPLAY para teste em celulares Android.
+
+O problema atual nao e falta de permissao comum do app. O principal problema e
+que o arquivo usado nos testes anteriores era um APK de debug:
+
+app/build/outputs/apk/debug/app-debug.apk
+
+Esse arquivo serve para desenvolvimento, mas nao e o arquivo ideal para enviar
+por WhatsApp, transferir para outros aparelhos ou testar como instalador real.
+
+O arquivo correto para instalar em celulares e um APK release assinado:
+
+app/build/outputs/apk/release/app-release.apk
+
+O arquivo correto para enviar para a Google Play Store e:
+
+app/build/outputs/bundle/release/app-release.aab
+
+
+1. DIFERENCA ENTRE APK DEBUG E APK RELEASE
+======================================================================
+
+APK debug:
+
+- Nome comum: app-debug.apk.
+- Usado durante desenvolvimento.
+- Assinado automaticamente com a chave generica Android Debug.
+- Marcado internamente como debuggable.
+- Pode ser bloqueado por alguns celulares, fabricantes, antivirus ou Play
+  Protect.
+- Pode instalar no celular de desenvolvimento, mas falhar em outros aparelhos.
+- Nao deve ser usado como instalador publico.
+
+APK release:
+
+- Nome comum: app-release.apk.
+- Usado para teste real em aparelhos e distribuicao fora da loja, quando
+  necessario.
+- Deve ser assinado com uma chave release propria do dono do app.
+- Nao fica marcado como debuggable.
+- Tem comportamento muito mais proximo do app publicado.
+- E o arquivo correto para transferir para celulares e instalar manualmente.
+
+AAB release:
+
+- Nome comum: app-release.aab.
+- Usado para upload na Google Play Store.
+- Nao e arquivo para instalar diretamente no celular.
+- A Play Store usa o AAB para gerar os APKs finais otimizados para cada
+  aparelho.
+
+
+2. CHAVE DE ASSINATURA DEFINITIVA
+======================================================================
+
+Para gerar um APK release correto, e necessario ter uma chave de assinatura
+release. Essa chave e a identidade tecnica do aplicativo.
+
+No projeto BOXPLAY, a chave foi criada em:
+
+C:\Users\ALESSANDRO LACERDA\Documents\BOXPLAY\_KEYS\boxplay-upload.jks
+
+Essa chave nunca deve ser enviada para chat, nunca deve ser commitada no GitHub
+e nunca deve ser publicada em ZIP junto com o codigo.
+
+Tambem nao se deve expor:
+
+- senha da keystore;
+- senha da chave;
+- conteudo Base64 da keystore;
+- arquivos .jks;
+- arquivos .keystore;
+- arquivos .env;
+- service accounts;
+- tokens.
+
+
+3. VARIAVEIS NECESSARIAS PARA BUILD RELEASE
+======================================================================
+
+O projeto foi configurado para ler a assinatura release por variaveis de
+ambiente ou secrets da plataforma de build.
+
+As 4 variaveis obrigatorias sao:
+
+RELEASE_STORE_FILE
+RELEASE_STORE_PASSWORD
+RELEASE_KEY_ALIAS
+RELEASE_KEY_PASSWORD
+
+Significado:
+
+RELEASE_STORE_FILE
+    Caminho do arquivo .jks na maquina ou no ambiente de build.
+
+RELEASE_STORE_PASSWORD
+    Senha da keystore.
+
+RELEASE_KEY_ALIAS
+    Alias usado na criacao da chave. No BOXPLAY foi definido como:
+    boxplay
+
+RELEASE_KEY_PASSWORD
+    Senha da chave.
+
+Em plataformas como GitHub Actions, Codemagic, Bitrise ou AppCenter, normalmente
+o arquivo .jks e salvo como texto Base64 em um secret chamado:
+
+RELEASE_KEYSTORE_BASE64
+
+Depois a plataforma recria o arquivo .jks durante o build e define
+RELEASE_STORE_FILE apontando para esse arquivo temporario.
+
+
+4. COMO GERAR O BASE64 DA CHAVE
+======================================================================
+
+No PowerShell, usando o caminho real da chave:
+
+$Ks = "$env:USERPROFILE\Documents\BOXPLAY\_KEYS\boxplay-upload.jks"
+$Out = "$env:USERPROFILE\Documents\BOXPLAY\_KEYS\RELEASE_KEYSTORE_BASE64.txt"
+
+[Convert]::ToBase64String([IO.File]::ReadAllBytes($Ks)) | Out-File -FilePath $Out -Encoding ascii
+notepad $Out
+
+O conteudo inteiro do arquivo RELEASE_KEYSTORE_BASE64.txt deve ser copiado para
+o secret:
+
+RELEASE_KEYSTORE_BASE64
+
+Esse conteudo nao deve ser colado em chat.
+
+
+5. SECRETS QUE DEVEM EXISTIR NA PLATAFORMA DE BUILD
+======================================================================
+
+Na plataforma escolhida, cadastrar:
+
+RELEASE_KEYSTORE_BASE64
+    Conteudo inteiro do arquivo RELEASE_KEYSTORE_BASE64.txt.
+
+RELEASE_STORE_PASSWORD
+    Senha digitada na criacao da keystore.
+
+RELEASE_KEY_ALIAS
+    boxplay
+
+RELEASE_KEY_PASSWORD
+    Senha da chave.
+
+Observacao importante:
+
+Se RELEASE_STORE_PASSWORD e RELEASE_KEY_PASSWORD forem iguais, isso e aceitavel
+tecnicamente. Mesmo assim, devem ser cadastradas como dois secrets separados.
+
+
+6. COMANDO DE BUILD RELEASE
+======================================================================
+
+Depois que os secrets estiverem configurados, a plataforma de build deve rodar:
+
+./gradlew check :app:bundleRelease :app:assembleRelease
+
+No Windows local, se as variaveis estiverem configuradas corretamente:
+
+.\gradlew.bat check :app:bundleRelease :app:assembleRelease --console=plain
+
+O projeto tem uma tarefa de protecao:
+
+:app:validateReleaseSigning
+
+Ela impede build release se faltar alguma destas variaveis:
+
+- RELEASE_STORE_FILE
+- RELEASE_STORE_PASSWORD
+- RELEASE_KEY_ALIAS
+- RELEASE_KEY_PASSWORD
+
+Isso foi feito de proposito para evitar gerar um APK release invalido ou
+enganoso.
+
+
+7. ARQUIVOS GERADOS
+======================================================================
+
+Depois do build correto, os arquivos esperados sao:
+
+APK para instalar em celulares:
+
+app/build/outputs/apk/release/app-release.apk
+
+AAB para Play Store:
+
+app/build/outputs/bundle/release/app-release.aab
+
+Para teste manual em celular, transferir apenas:
+
+app-release.apk
+
+Nao transferir:
+
+- app-debug.apk;
+- arquivos .zip;
+- app-release.aab;
+- pasta build inteira;
+- codigo fonte.
+
+
+8. ANTES DE INSTALAR NO CELULAR
+======================================================================
+
+Antes de instalar o APK release em um aparelho onde o BOXPLAY ja foi testado,
+remover qualquer versao anterior:
+
+Configuracoes > Apps > BOXPLAY > Desinstalar
+
+Motivo tecnico:
+
+Se o celular ja tem uma versao debug instalada, ela foi assinada com a chave
+Android Debug. O APK release sera assinado com outra chave. O Android pode
+bloquear a instalacao por conflito de assinatura.
+
+Esse bloqueio pode aparecer como:
+
+- problema ao analisar o pacote;
+- app nao instalado;
+- instalacao bloqueada;
+- erro de pacote;
+- mensagem generica de seguranca.
+
+
+9. PERMISSAO PARA INSTALAR APP DE FONTE EXTERNA
+======================================================================
+
+Em instalacao manual fora da Play Store, o celular precisa permitir que o app
+usado para abrir o APK instale apps desconhecidos.
+
+Exemplos:
+
+Se abrir pelo gerenciador de arquivos:
+
+Configuracoes > Apps > Gerenciador de arquivos > Instalar apps desconhecidos
+
+Se abrir pelo WhatsApp:
+
+Configuracoes > Apps > WhatsApp > Instalar apps desconhecidos
+
+Se abrir pelo Chrome:
+
+Configuracoes > Apps > Chrome > Instalar apps desconhecidos
+
+O nome exato do menu muda por fabricante e versao do Android.
+
+Mesmo com essa permissao, alguns celulares podem bloquear APKs enviados por
+WhatsApp ou apps desconhecidos por politica de seguranca. Para teste mais
+confiavel, prefira transferir por cabo USB, Google Drive, navegador ou baixar
+direto de uma fonte HTTPS.
+
+
+10. LIMITACAO IMPORTANTE: "QUALQUER CELULAR"
+======================================================================
+
+Tecnicamente, nenhum APK manual fora da Play Store tem garantia absoluta de
+instalar em qualquer celular.
+
+Motivos:
+
+- o usuario pode nao permitir instalacao de fonte externa;
+- o fabricante pode bloquear apps de origem desconhecida;
+- Play Protect pode exigir verificacao;
+- politicas de Android recentes podem exigir desenvolvedor verificado;
+- aparelho corporativo pode ter politica MDM bloqueando instalacao;
+- pode haver versao antiga do app instalada com assinatura diferente;
+- o arquivo pode ser renomeado, compactado, corrompido ou enviado errado.
+
+O caminho mais proximo de "instala em qualquer celular Android compativel" e
+publicar pela Google Play Store ou usar teste interno/fechado da Play Console.
+
+Para testes fora da loja, o melhor possivel e:
+
+1. APK release.
+2. Assinatura release propria.
+3. minSdk compativel.
+4. Arquivo APK integro.
+5. Celular permitindo instalacao externa.
+6. Nenhuma versao antiga instalada com assinatura diferente.
+
+
+11. COMPATIBILIDADE ATUAL DO BOXPLAY
+======================================================================
+
+Configuracao Android atual do projeto:
+
+applicationId: com.boxplay
+namespace: com.boxplay
+minSdk: 26
+targetSdk: 36
+compileSdk: 37
+versionCode: 3
+versionName: 0.2.1
+
+Isso significa:
+
+- Android minimo suportado: Android 8.0, API 26.
+- Celulares com Android 8 ou superior devem ser compativeis em termos de SDK.
+- Celulares abaixo de Android 8 nao devem instalar.
+
+O celular Samsung Android 14 e o Samsung Android 16 mostrados nos testes sao
+compativeis por versao de Android. Se nao instalar, a causa mais provavel nao e
+minSdk, e sim assinatura/debug, origem do arquivo, seguranca do aparelho ou
+conflito com app ja instalado.
+
+
+12. CHECKLIST TECNICO PARA A PROXIMA PLATAFORMA
+======================================================================
+
+Entregar para a plataforma de build:
+
+- Repositorio GitHub:
+  https://github.com/alessandrobarra7/vs-boxplay.git
+
+- Branch:
+  feature/google-play-one-time-purchase
+
+- Comando:
+  ./gradlew check :app:bundleRelease :app:assembleRelease
+
+- Secrets:
+  RELEASE_KEYSTORE_BASE64
+  RELEASE_STORE_PASSWORD
+  RELEASE_KEY_ALIAS
+  RELEASE_KEY_PASSWORD
+
+- Alias:
+  boxplay
+
+- Arquivo esperado para celular:
+  app/build/outputs/apk/release/app-release.apk
+
+- Arquivo esperado para Play Store:
+  app/build/outputs/bundle/release/app-release.aab
+
+
+13. RESUMO FINAL
+======================================================================
+
+O problema de instalacao em outros celulares nao deve ser tratado como simples
+permissao do app.
+
+O ponto principal e gerar o instalador certo:
+
+ERRADO:
+app-debug.apk
+
+CERTO:
+app-release.apk assinado com boxplay-upload.jks
+
+Para Play Store:
+app-release.aab assinado com a mesma configuracao de release.
+
+Depois disso, se algum celular ainda nao instalar, o diagnostico deve ser feito
+com uma destas informacoes:
+
+- mensagem exata exibida no aparelho;
+- versao do Android;
+- se ja havia versao anterior instalada;
+- origem do APK no celular;
+- resultado de instalacao via adb, quando disponivel:
+
+adb install -r app-release.apk
+
+O resultado do adb e o metodo mais preciso para saber a causa tecnica real da
+falha.

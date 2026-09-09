@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -62,13 +63,18 @@ class LocalAudioStorage(private val context: Context) {
      */
     suspend fun copyFromFile(boxId: Int, sourceFile: File, displayName: String): StoredAudio = withContext(Dispatchers.IO) {
         val safeName = displayName.toSafeFileName()
-        val target = File(audioDirectory, "box_${boxId}_${System.currentTimeMillis()}_$safeName")
+        val target = File(audioDirectory, "box_${boxId}_${UUID.randomUUID()}_$safeName")
 
         if (sourceFile.length() == 0L) {
             error("O arquivo mixado está vazio.")
         }
 
-        sourceFile.copyTo(target, overwrite = true)
+        try {
+            sourceFile.copyTo(target, overwrite = false)
+        } catch (error: Throwable) {
+            target.delete()
+            throw error
+        }
 
         StoredAudio(
             originalFileName = displayName,

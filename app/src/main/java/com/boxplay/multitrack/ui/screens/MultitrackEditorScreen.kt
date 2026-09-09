@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
@@ -59,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import com.boxplay.data.AudioSceneState
 import com.boxplay.multitrack.model.MultitrackTrack
 import com.boxplay.multitrack.ui.components.MultitrackTrackCard
+import com.boxplay.multitrack.ui.components.MultitrackActionButton
 import com.boxplay.multitrack.ui.components.MultitrackTransportBar
 import com.boxplay.multitrack.ui.model.ProjectSaveStatus
 import com.boxplay.multitrack.ui.model.ZipImportUiState
@@ -77,7 +79,7 @@ import com.boxplay.ui.theme.BoxPlayWarning
  * controles de cada pista funcionam e autosalvam; "Tocar" liga a
  * pré-escuta simultânea das pistas (com volume ajustável ao vivo) e
  * "Exportar para Box" pergunta a Cena/Box de destino, mixa as pistas num
- * único áudio e salva no Box escolhido.
+ * único áudio e o deixa pendente de confirmação em Salvar no Box escolhido.
  */
 @Composable
 fun MultitrackEditorScreen(
@@ -243,19 +245,12 @@ fun MultitrackEditorScreen(
                     )
                 }
                 item {
-                    Text(
-                        text = "+ Adicionar pista (áudio, .zip ou .rar)",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = BoxPlayCoral,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable(enabled = zipImportState !is ZipImportUiState.Importing) {
-                                importLauncher.launch(arrayOf("*/*"))
-                            }
-                            .padding(vertical = 12.dp),
+                    MultitrackActionButton(
+                        label = "Adicionar pista (áudio, .zip ou .rar)",
+                        icon = Icons.Rounded.LibraryMusic,
+                        enabled = zipImportState !is ZipImportUiState.Importing,
+                        onClick = { importLauncher.launch(arrayOf("*/*")) },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
@@ -290,8 +285,7 @@ fun MultitrackEditorScreen(
                 sceneState = sceneState,
                 onDismiss = { viewModel.dismissExportDialog() },
                 onConfirm = { sceneId, boxId, sceneName ->
-                    viewModel.confirmExportDestination(sceneId, boxId, sceneName)
-                    onExportComplete()
+                    viewModel.confirmExportDestination(sceneId, boxId, sceneName, onExportComplete)
                 },
             )
         }
