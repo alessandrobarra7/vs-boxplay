@@ -13,6 +13,7 @@
         android:largeHeap="true"
         android:theme="@style/Theme.BoxPlay"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+        tools:targetApi="28"
         tools:replace="android:appComponentFactory,android:label">
         <activity
             android:name=".MainActivity"
